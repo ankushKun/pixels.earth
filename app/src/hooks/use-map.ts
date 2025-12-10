@@ -356,6 +356,37 @@ export function useMap() {
         });
     }, [state.selectedPixel]);
 
+    // Bulk update markers (for efficient loading)
+    const bulkUpdateMarkers = useCallback((pixels: PixelData[]) => {
+        if (!mapRef.current) return;
+
+        // Process in batches to avoid locking UI
+        const BATCH_SIZE = 1000;
+        
+        for (let i = 0; i < pixels.length; i += BATCH_SIZE) {
+            const batch = pixels.slice(i, i + BATCH_SIZE);
+            
+            batch.forEach(({ px, py, color, timestamp }) => {
+                const pixelKey = `${px},${py}`;
+                pixelDataRef.current.set(pixelKey, color);
+                
+                // Update or create marker
+                updateMarkerInternal(px, py, color);
+            });
+        }
+        
+        setPlacedPixelCount(pixelDataRef.current.size);
+        
+        // Merge into localPixels, respecting max size and uniqueness
+        setLocalPixels(prev => {
+            const newMap = new Map(prev.map(p => [`${p.px},${p.py}`, p]));
+            pixels.forEach(p => newMap.set(`${p.px},${p.py}`, p));
+            return Array.from(newMap.values())
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 50);
+        });
+    }, [updateMarkerInternal]);
+
     return {
         mapRef,
         selectedPixel: state.selectedPixel,
@@ -372,5 +403,6 @@ export function useMap() {
         // Exposed for local updates
         updateMarker,
         removeMarker,
+        bulkUpdateMarkers,
     };
 }

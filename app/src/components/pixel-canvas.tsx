@@ -158,6 +158,7 @@ export function PixelCanvas() {
         initializeMap,
         updateMarker,
         removeMarker,
+        bulkUpdateMarkers,
     } = useMap();
 
     // Load saved map view from localStorage
@@ -197,13 +198,128 @@ export function PixelCanvas() {
     const [highlightShard, setHighlightShard] = useState<{ x: number; y: number } | null>(null);
 
     // Magicplace program hook for checking shard delegation status
-    const { checkShardDelegation, initializeShard, estimateShardUnlockCost } = useMagicplaceProgram();
+    const { 
+        checkShardDelegation, 
+        initializeShard, 
+        estimateShardUnlockCost,
+        getAllDelegatedShards,
+        placePixelOnER,
+        erasePixelOnER,
+        getPixelFromShard
+    } = useMagicplaceProgram();
 
     // Readonly mode - hide interactions
     const { isReadonly } = useReadonlyMode();
 
     // Session balance for transaction checks
     const { checkBalance, refreshBalance } = useSessionBalance();
+    
+    // Initial fetch of delegated shards pixels
+    const fetchedRef = useRef(false);
+    
+    useEffect(() => {
+        if (fetchedRef.current || isReadonly) return;
+        
+        const fetchPixels = async () => {
+            // Prevent multiple fetches
+            fetchedRef.current = true;
+            
+            console.log("Fetching all delegated shards from ER...");
+            const shards = await getAllDelegatedShards();
+            console.log(`Found ${shards.length} delegated shards`);
+            
+            const allPixels: PixelData[] = [];
+            const newUnlockedShards = new Set<string>();
+            
+            for (const shard of shards) {
+                // Mark as unlocked
+                newUnlockedShards.add(`${shard.shardX},${shard.shardY}`);
+                
+                // Unpack pixels
+                // We iterate through the shard dimension (128x128)
+                // This might be heavy, but it's done once on load
+                // Optimization: only check non-zero bytes in buffer? 
+                // But getPixelFromShard handles logic nicely.
+                
+                // Let's iterate bytes directly for performance
+                const pixels = shard.pixels;
+                for (let i = 0; i < pixels.length; i++) {
+                    const byte = pixels[i];
+                    if (byte === undefined || byte === 0) continue; 
+                    
+                    // Low nibble (ODD index pixel)
+                    const p1 = byte & 0x0F;
+                    if (p1 !== 0) {
+                        const colorHex = PRESET_COLORS[p1 - 1]; // 1-based index
+                        if (colorHex) {
+                            const localIndex = 2 * i + 1; // Odd
+                            const localY = Math.floor(localIndex / SHARD_DIMENSION);
+                            const localX = localIndex % SHARD_DIMENSION;
+                            
+                            allPixels.push({
+                                px: shard.shardX * SHARD_DIMENSION + localX,
+                                py: shard.shardY * SHARD_DIMENSION + localY,
+                                color: hexToUint32(colorHex),
+                                timestamp: Date.now() / 1000
+                            });
+                        }
+                    }
+                    
+                    // High nibble (EVEN index pixel)
+                    const p2 = (byte >> 4) & 0x0F;
+                    if (p2 !== 0) {
+                        const colorHex = PRESET_COLORS[p2 - 1]; // 1-based index
+                        if (colorHex) {
+                            const localIndex = 2 * i; // Even
+                            const localY = Math.floor(localIndex / SHARD_DIMENSION);
+                            const localX = localIndex % SHARD_DIMENSION;
+                            
+                             allPixels.push({
+                                px: shard.shardX * SHARD_DIMENSION + localX,
+                                py: shard.shardY * SHARD_DIMENSION + localY,
+                                color: hexToUint32(colorHex),
+                                timestamp: Date.now() / 1000
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Update unlocked shards state
+            // Update unlocked shards state
+            if (newUnlockedShards.size > 0) {
+                setUnlockedShards(prev => {
+                    const next = new Set(prev);
+                    newUnlockedShards.forEach(s => next.add(s));
+                    return next;
+                });
+
+                // Also populate the list for the UI panel
+                setRecentUnlockedShards(prev => {
+                    const newShards = shards.map(s => ({ 
+                        x: s.shardX, 
+                        y: s.shardY, 
+                        timestamp: Date.now() // We treat them as discovered now
+                    }));
+                    
+                    // Filter out any that might somehow already be locally known (unlikely on init)
+                    const uniqueNewShards = newShards.filter(ns => 
+                        !prev.some(p => p.x === ns.x && p.y === ns.y)
+                    );
+                    
+                    return [...uniqueNewShards, ...prev].slice(0, 50);
+                });
+            }
+            
+            // Bulk update map
+            if (allPixels.length > 0) {
+                console.log(`Loading ${allPixels.length} pixels to map`);
+                bulkUpdateMarkers(allPixels);
+            }
+        };
+        
+        fetchPixels();
+    }, [getAllDelegatedShards, bulkUpdateMarkers, isReadonly]);
 
     // Track which shards we're currently checking to avoid duplicate requests
     const checkingShards = useRef<Set<string>>(new Set());
@@ -298,22 +414,6 @@ export function PixelCanvas() {
     // Pop sound for pixel placement
     const { playPop } = usePopSound();
 
-    // Place pixel at coordinates
-    const handlePlacePixelAt = useCallback((px: number, py: number) => {
-        const isTransparent = selectedColor === TRANSPARENT_COLOR;
-        // Transparent = 0 (unset), all other colors go through hexToUint32
-        const color = isTransparent ? 0 : hexToUint32(selectedColor);
-
-        if (isTransparent) {
-            removeMarker(`${px},${py}`);
-        } else {
-            updateMarker(px, py, color);
-        }
-        
-        // Play pop sound
-        playPop();
-    }, [selectedColor, updateMarker, removeMarker, playPop]);
-
     // Check if a pixel is in a locked shard
     const isShardLocked = useCallback((px: number, py: number): boolean => {
         const shardX = Math.floor(px / SHARD_DIMENSION);
@@ -322,6 +422,42 @@ export function PixelCanvas() {
         // Check if this shard has been unlocked
         return !unlockedShards.has(shardKey);
     }, [unlockedShards]);
+
+    // Place pixel at coordinates
+    const handlePlacePixelAt = useCallback(async (px: number, py: number) => {
+        const isTransparent = selectedColor === TRANSPARENT_COLOR;
+        // Transparent = 0 (unset), all other colors go through hexToUint32
+        const color = isTransparent ? 0 : hexToUint32(selectedColor);
+
+        // Check if locked
+        if (isShardLocked(px, py)) {
+            alert("This shard is locked. Please unlock it first!");
+            return;
+        }
+
+        try {
+            if (isTransparent) {
+                await erasePixelOnER(px, py);
+                removeMarker(`${px},${py}`);
+            } else {
+                // Find color index (1-based) for contract
+                const colorIndex = PRESET_COLORS.indexOf(selectedColor as any) + 1;
+                
+                if (colorIndex <= 0) {
+                     throw new Error("Invalid color selected");
+                }
+                
+                await placePixelOnER(px, py, colorIndex);
+                updateMarker(px, py, color); 
+            }
+            
+            // Play pop sound
+            playPop();
+        } catch (e) {
+            console.error("Failed to place pixel:", e);
+            alert("Failed to place pixel: " + (e instanceof Error ? e.message : String(e)));
+        }
+    }, [selectedColor, updateMarker, removeMarker, playPop, isShardLocked, placePixelOnER, erasePixelOnER]);
 
     // Handle shard unlock
     const handleUnlockShard = useCallback(async (shardX: number, shardY: number) => {
@@ -351,7 +487,7 @@ export function PixelCanvas() {
                 // Popup will be shown by the provider
                 return;
             }
-
+ 
             // Play pop sound as feedback
             playPop();
 

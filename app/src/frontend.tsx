@@ -12,13 +12,16 @@ import "./polyfills";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { WalletProvider } from "./providers/wallet-provider";
+import { SessionKeyProvider } from "./hooks/use-session-key";
 import { App } from "./App";
 
 const elem = document.getElementById("root")!;
 const app = (
   <StrictMode>
     <WalletProvider>
-      <App />
+      <SessionKeyProvider>
+        <App />
+      </SessionKeyProvider>
     </WalletProvider>
   </StrictMode>
 );

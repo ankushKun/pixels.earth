@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, createContext, useContext, type ReactNode } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Keypair, PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
 import * as nacl from "tweetnacl";
@@ -93,27 +93,29 @@ async function deriveKeypairFromSignature(signature: Uint8Array): Promise<Keypai
     return Keypair.fromSecretKey(naclKeypair.secretKey);
 }
 
+// Context definition
+interface SessionKeyContextType {
+    sessionKey: SessionKeyState;
+    publicKey: PublicKey | null;
+    isActive: boolean;
+    isExpired: boolean;
+    timeRemaining: number | null;
+    isLoading: boolean;
+    error: string | null;
+    createSessionKey: (options?: CreateSessionKeyOptions) => Promise<Keypair>;
+    revokeSession: (salt?: string) => void;
+    restoreSession: (salt?: string) => Promise<boolean>;
+    signTransaction: <T extends Transaction | VersionedTransaction>(transaction: T) => Promise<T>;
+    signAllTransactions: <T extends Transaction | VersionedTransaction>(transactions: T[]) => Promise<T[]>;
+}
+
+const SessionKeyContext = createContext<SessionKeyContextType | null>(null);
+
 /**
- * Hook for managing deterministic session keys derived from wallet signatures.
- * 
- * The session key is derived deterministically from a signature request,
- * meaning the same wallet + salt combination will always produce the same session key.
- * 
- * @example
- * ```tsx
- * const { sessionKey, createSessionKey, revokeSession, signTransaction } = useSessionKey();
- * 
- * // Create a session key
- * await createSessionKey({ salt: "pixel-placement" });
- * 
- * // Use the session key to sign a transaction
- * const signedTx = await signTransaction(transaction);
- * 
- * // Revoke when done
- * revokeSession();
- * ```
+ * Session Key Provider
+ * MUST be wrapped inside WalletProvider
  */
-export function useSessionKey() {
+export function SessionKeyProvider({ children }: { children: ReactNode }) {
     const wallet = useWallet();
     
     const [sessionState, setSessionState] = useState<SessionKeyState>({
@@ -406,30 +408,51 @@ export function useSessionKey() {
         return () => clearInterval(interval);
     }, [sessionState.expiresAt, sessionState.isActive]);
 
-    return {
-        // Session state
+    const value = useMemo(() => ({
         sessionKey: sessionState,
         publicKey: sessionState.publicKey,
         isActive: sessionState.isActive,
         isExpired,
         timeRemaining,
-        
-        // Loading state
         isLoading,
         error,
-        
-        // Actions
         createSessionKey,
         revokeSession,
         restoreSession,
-        
-        // Transaction signing
         signTransaction,
         signAllTransactions,
-    };
+    }), [
+        sessionState,
+        isExpired,
+        timeRemaining,
+        isLoading,
+        error,
+        createSessionKey,
+        revokeSession,
+        restoreSession,
+        signTransaction,
+        signAllTransactions
+    ]);
+
+    return (
+        <SessionKeyContext.Provider value={value}>
+            {children}
+        </SessionKeyContext.Provider>
+    );
+}
+
+/**
+ * Hook for managing deterministic session keys derived from wallet signatures.
+ */
+export function useSessionKey() {
+    const context = useContext(SessionKeyContext);
+    if (!context) {
+        throw new Error("useSessionKey must be used within a SessionKeyProvider");
+    }
+    return context;
 }
 
 /**
  * Type export for session key manager return type
  */
-export type UseSessionKeyReturn = ReturnType<typeof useSessionKey>;
+export type UseSessionKeyReturn = SessionKeyContextType;

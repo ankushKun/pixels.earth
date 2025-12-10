@@ -226,6 +226,7 @@ pub mod magicplace {
         if is_high_nibble {
             // Clear high nibble and set new color
             shard.pixels[byte_index] = (shard.pixels[byte_index] & 0x0F) | (color << 4);
+        } else {
             // Clear low nibble and set new color
             shard.pixels[byte_index] = (shard.pixels[byte_index] & 0xF0) | (color & 0x0F);
         }

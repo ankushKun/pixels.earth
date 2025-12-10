@@ -220,6 +220,25 @@ export function useMagicplaceProgram() {
         return new Program<Magicplace>(IDL as Magicplace, sessionErProvider);
     }, [sessionErProvider]);
 
+    // Read-only ER provider (for fetching without wallet)
+    const readOnlyErProvider = useMemo(() => {
+        const dummyWallet = {
+            publicKey: PublicKey.default,
+            signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T) => tx,
+            signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]) => txs,
+        };
+        
+        return new AnchorProvider(
+            erConnection,
+            dummyWallet,
+            { commitment: "confirmed" }
+        );
+    }, [erConnection]);
+
+    const readOnlyErProgram = useMemo(() => {
+        return new Program<Magicplace>(IDL as Magicplace, readOnlyErProvider);
+    }, [readOnlyErProvider]);
+
     // ========================================
     // Shard Query Functions
     // ========================================
@@ -314,11 +333,12 @@ export function useMagicplaceProgram() {
      * Fetch a shard from Ephemeral Rollups (when delegated)
      */
     const fetchShardFromER = useCallback(async (shardX: number, shardY: number): Promise<PixelShardAccount | null> => {
-        if (!erProgram) return null;
+        const targetProgram = erProgram || readOnlyErProgram;
+        if (!targetProgram) return null;
 
         try {
             const shardPDA = deriveShardPDA(shardX, shardY);
-            const account = await erProgram.account.pixelShard.fetch(shardPDA);
+            const account = await targetProgram.account.pixelShard.fetch(shardPDA);
             return {
                 shardX: account.shardX,
                 shardY: account.shardY,
@@ -330,7 +350,33 @@ export function useMagicplaceProgram() {
             console.debug(`Shard (${shardX}, ${shardY}) not found on ER`);
             return null;
         }
-    }, [erProgram]);
+    }, [erProgram, readOnlyErProgram]);
+
+    /**
+     * Fetch all delegated shards from Ephemeral Rollups
+     * This returns all shards that exist on the ER
+     */
+    const getAllDelegatedShards = useCallback(async (): Promise<PixelShardAccount[]> => {
+        const targetProgram = erProgram || readOnlyErProgram;
+        if (!targetProgram) return [];
+
+        try {
+            // Fetch all pixelShard accounts from the ER
+            // This is efficient because ER only contains active/delegated shards
+            const accounts = await targetProgram.account.pixelShard.all();
+            
+            return accounts.map(a => ({
+                shardX: a.account.shardX,
+                shardY: a.account.shardY,
+                pixels: new Uint8Array(a.account.pixels),
+                creator: a.account.creator,
+                bump: a.account.bump,
+            }));
+        } catch (err) {
+            console.error("Failed to fetch all delegated shards:", err);
+            return [];
+        }
+    }, [erProgram, readOnlyErProgram]);
 
     // ========================================
     // Shard Management Functions
@@ -1086,6 +1132,7 @@ export function useMagicplaceProgram() {
         fetchShard,
         fetchShardFromER,
         checkShardDelegation,
+        getAllDelegatedShards,
 
         // Shard management (initializeShard includes automatic delegation to ER)
         initializeShard,
