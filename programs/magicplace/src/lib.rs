@@ -58,7 +58,6 @@ pub mod magicplace {
         // Packed storage: 2 pixels per byte (4-bit colors)
         shard.pixels = vec![0u8; BYTES_PER_SHARD];
         shard.creator = ctx.accounts.authority.key();
-        shard.created_at = Clock::get()?.unix_timestamp;
         shard.bump = ctx.bumps.shard;
         
         msg!(
@@ -128,7 +127,7 @@ pub mod magicplace {
             py,
             color,
             painter: ctx.accounts.signer.key(),
-            timestamp: Clock::get()?.unix_timestamp,
+            timestamp: Clock::get()?.unix_timestamp as u64,
         });
 
         Ok(())
@@ -174,38 +173,10 @@ pub mod magicplace {
             py,
             color: 0, // 0 = erased/transparent
             painter: ctx.accounts.signer.key(),
-            timestamp: Clock::get()?.unix_timestamp,
+            timestamp: Clock::get()?.unix_timestamp as u64,
         });
 
         Ok(())
-    }
-
-    /// Get pixel color (view function)
-    pub fn get_pixel(
-        ctx: Context<GetPixel>, 
-        _shard_x: u16, 
-        _shard_y: u16, 
-        px: u32,
-        py: u32
-    ) -> Result<u8> {
-        require!(px < CANVAS_RES && py < CANVAS_RES, PixelError::InvalidPixelCoord);
-        
-        let local_x = px % SHARD_DIMENSION;
-        let local_y = py % SHARD_DIMENSION;
-        let local_pixel_id = (local_y * SHARD_DIMENSION + local_x) as usize;
-        
-        // 4-bit packing: extract the appropriate nibble
-        let byte_index = local_pixel_id / 2;
-        let is_high_nibble = local_pixel_id % 2 == 0;
-        
-        let color = if is_high_nibble {
-            (ctx.accounts.shard.pixels[byte_index] >> 4) & 0x0F
-        } else {
-            ctx.accounts.shard.pixels[byte_index] & 0x0F
-        };
-        
-        msg!("Pixel ({}, {}) = color {}", px, py, color);
-        Ok(color)
     }
 
     // ========================================
@@ -342,8 +313,6 @@ pub struct PixelShard {
     pub pixels: Vec<u8>,
     /// Creator of the shard (who paid for initialization)
     pub creator: Pubkey,
-    /// Timestamp of creation
-    pub created_at: i64,
     /// PDA bump seed
     pub bump: u8,
 }
@@ -376,5 +345,5 @@ pub struct PixelChanged {
     pub py: u32,
     pub color: u8,
     pub painter: Pubkey,
-    pub timestamp: i64,
+    pub timestamp: u64,
 }

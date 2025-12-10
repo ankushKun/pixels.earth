@@ -15,10 +15,11 @@ import {
     MAX_MAP_ZOOM,
     MAP_MOVE_THROTTLE_MS,
     PIXEL_SELECT_ZOOM,
+    SHARD_DIMENSION,
 } from '../constants';
 import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
-import { Eraser } from 'lucide-react';
+import { Eraser, Grid2X2Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePopSound } from '../hooks/use-pop-sound';
 
@@ -185,6 +186,19 @@ export function PixelCanvas() {
     const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
     const [showShardGrid, setShowShardGrid] = useState(false);
     const [shardsAggregated, setShardsAggregated] = useState(false);
+    const [visibleShards, setVisibleShards] = useState<{ x: number; y: number }[]>([]);
+    const [showRecentShards, setShowRecentShards] = useState(true);
+    const [lockedShardAlert, setLockedShardAlert] = useState<{ x: number; y: number } | null>(null);
+    const [unlockedShards, setUnlockedShards] = useState<Set<string>>(new Set());
+    const [recentUnlockedShards, setRecentUnlockedShards] = useState<{ x: number; y: number; timestamp: number }[]>([]);
+    const [highlightShard, setHighlightShard] = useState<{ x: number; y: number } | null>(null);
+
+    // Placeholder: log when visible shards are fetchable (< 90) and zoomed in enough
+    useEffect(() => {
+        if (currentZoom >= 12 && visibleShards.length > 0 && visibleShards.length < 90) {
+            console.log(`Fetching ${visibleShards.length} shards`);
+        }
+    }, [visibleShards, currentZoom]);
 
     // Force crosshair cursor on map container
     useEffect(() => {
@@ -231,15 +245,86 @@ export function PixelCanvas() {
         playPop();
     }, [selectedColor, updateMarker, removeMarker, playPop]);
 
+    // Check if a pixel is in a locked shard
+    const isShardLocked = useCallback((px: number, py: number): boolean => {
+        const shardX = Math.floor(px / SHARD_DIMENSION);
+        const shardY = Math.floor(py / SHARD_DIMENSION);
+        const shardKey = `${shardX},${shardY}`;
+        // Check if this shard has been unlocked
+        return !unlockedShards.has(shardKey);
+    }, [unlockedShards]);
+
+    // Handle shard unlock
+    const handleUnlockShard = useCallback((shardX: number, shardY: number) => {
+        const shardKey = `${shardX},${shardY}`;
+        
+        // Add to unlocked set
+        setUnlockedShards(prev => {
+            const newSet = new Set(prev);
+            newSet.add(shardKey);
+            return newSet;
+        });
+        
+        // Add to recent unlocked list
+        setRecentUnlockedShards(prev => {
+            const newShard = { x: shardX, y: shardY, timestamp: Date.now() };
+            // Remove if already exists, add to front
+            const filtered = prev.filter(s => !(s.x === shardX && s.y === shardY));
+            return [newShard, ...filtered].slice(0, 50); // Keep max 50
+        });
+        
+        // Play pop sound as feedback
+        playPop();
+    }, [playPop]);
+
+    // Zoom to show a locked shard
+    const zoomToLockedShard = useCallback((px: number, py: number) => {
+        if (!mapRef.current) return;
+        
+        const shardX = Math.floor(px / SHARD_DIMENSION);
+        const shardY = Math.floor(py / SHARD_DIMENSION);
+        
+        // Calculate center of the shard
+        const centerPx = (shardX + 0.5) * SHARD_DIMENSION;
+        const centerPy = (shardY + 0.5) * SHARD_DIMENSION;
+        const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
+        
+        // Check if already at approximately zoom 13
+        const currentZoomLevel = mapRef.current.getZoom();
+        if (Math.abs(currentZoomLevel - 13) < 0.5) {
+            // Already at zoom 13, still center and trigger pulse animation
+            mapRef.current.setView([lat, lon], 13, { animate: true });
+            setLockedShardAlert({ x: shardX, y: shardY });
+            // Clear after animation
+            setTimeout(() => setLockedShardAlert(null), 600);
+        } else {
+            // Zoom out to level 13 and center on shard
+            mapRef.current.setView([lat, lon], 13, { animate: true });
+        }
+    }, [mapRef]);
+
     // Place pixel at selected location
     const handlePlacePixel = useCallback(() => {
         if (!selectedPixel) return;
+        
+        // Check if shard is locked
+        if (isShardLocked(selectedPixel.px, selectedPixel.py)) {
+            zoomToLockedShard(selectedPixel.px, selectedPixel.py);
+            return;
+        }
+        
         handlePlacePixelAt(selectedPixel.px, selectedPixel.py);
-    }, [selectedPixel, handlePlacePixelAt]);
+    }, [selectedPixel, handlePlacePixelAt, isShardLocked, zoomToLockedShard]);
 
     // Instant place on map click when zoomed in
     const handleInstantMapClick = useCallback((lat: number, lng: number) => {
         const { px, py } = latLonToGlobalPx(lat, lng);
+
+        // Always check if shard is locked first
+        if (isShardLocked(px, py)) {
+            zoomToLockedShard(px, py);
+            return;
+        }
 
         // Check if we should instant place or just select
         const isZoomedIn = currentZoom >= PIXEL_SELECT_ZOOM;
@@ -249,9 +334,9 @@ export function PixelCanvas() {
             handlePlacePixelAt(px, py);
         }
 
-        // Always update selection
+        // Update selection and zoom in if needed
         handleMapClick(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
-    }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor]);
+    }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -322,6 +407,11 @@ export function PixelCanvas() {
                 <ShardGridOverlay 
                     visible={showShardGrid} 
                     onAggregatedChange={setShardsAggregated}
+                    onVisibleShardsChange={setVisibleShards}
+                    alertShard={lockedShardAlert}
+                    unlockedShards={unlockedShards}
+                    onUnlockShard={handleUnlockShard}
+                    highlightShard={highlightShard}
                 />
             </MapContainer>
 
@@ -401,6 +491,18 @@ export function PixelCanvas() {
             {/* Top Right - Info */}
             <div className="absolute top-4 right-4 flex items-center gap-3 z-40">
 
+                {/* Shards Count - Toggle for Recent Shard unlocks */}
+                <button
+                    onClick={() => setShowRecentShards(!showRecentShards)}
+                    className={`backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 transition-colors ${showRecentShards
+                        ? 'bg-blue-500 text-white hover:bg-blue-600'
+                        : 'bg-white/90 text-slate-700 hover:bg-white'
+                        }`}
+                    title="Toggle recent shards"
+                >
+                    <Grid2X2Plus className="w-4.5 h-4.5" />
+                    <span>{unlockedShards.size.toLocaleString()}</span>
+                </button>
                 {/* Pixels Count - Toggle for Recent Pixels */}
                 <button
                     onClick={() => setShowRecentPixels(!showRecentPixels)}
@@ -417,57 +519,130 @@ export function PixelCanvas() {
                 <WalletConnect onMenuOpenChange={setIsWalletMenuOpen} />
             </div>
 
-            {/* Recent Pixels Panel */}
-            {showRecentPixels && !isWalletMenuOpen && (
-                <div className="absolute top-16 right-4 w-72 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl z-40 max-h-96 overflow-hidden">
-                    <div className="p-3 border-b border-slate-200 font-semibold text-slate-700 flex items-center justify-between">
-                        <span>Recent Pixels</span>
-                        <button onClick={() => setShowRecentPixels(false)} className="text-slate-400 hover:text-slate-600">✕</button>
-                    </div>
-                    <div className="overflow-y-auto max-h-80">
-                        {localPixels.length === 0 ? (
-                            <div className="p-4 text-center text-slate-400 text-sm">
-                                No pixels placed yet. Click on the map to start painting!
+            {/* Panels Container - Right side */}
+            {!isWalletMenuOpen && (showRecentPixels || showRecentShards) && (
+                <div className="absolute top-16 right-4 z-40 flex flex-col gap-3 max-h-[calc(100vh-200px)]">
+                    {/* Recent Pixels Panel */}
+                    {showRecentPixels && (
+                        <div className="w-72 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-64">
+                            <div className="p-3 border-b border-slate-200 font-semibold text-slate-700 flex items-center justify-between shrink-0">
+                                <span>Recent Pixels</span>
+                                <button onClick={() => setShowRecentPixels(false)} className="text-slate-400 hover:text-slate-600">✕</button>
                             </div>
-                        ) : (
-                            localPixels.slice(0, 20).map((pixel) => {
-                                const isTransparent = pixel.color === 0;
-                                return (
-                                    <div
-                                        key={`${pixel.px}-${pixel.py}-${pixel.timestamp}`}
-                                        className="p-3 hover:bg-slate-50 cursor-pointer transition-colors flex items-center gap-3 border-b border-slate-100 last:border-0"
-                                        onClick={() => {
-                                            focusOnPixel(pixel.px, pixel.py);
-                                        }}
-                                    >
-                                        <div
-                                            className="w-8 h-8 rounded-lg shadow-inner border border-slate-200"
-                                            style={isTransparent ? {
-                                                backgroundImage: `
+                            <div className="overflow-y-auto flex-1">
+                                {localPixels.length === 0 ? (
+                                    <div className="p-4 text-center text-slate-400 text-sm">
+                                        No pixels placed yet. Click on the map to start painting!
+                                    </div>
+                                ) : (
+                                    localPixels.slice(0, 20).map((pixel) => {
+                                        const isTransparent = pixel.color === 0;
+                                        return (
+                                            <div
+                                                key={`${pixel.px}-${pixel.py}-${pixel.timestamp}`}
+                                                className="p-3 hover:bg-slate-50 cursor-pointer transition-colors flex items-center gap-3 border-b border-slate-100 last:border-0"
+                                                onClick={() => {
+                                                    focusOnPixel(pixel.px, pixel.py);
+                                                }}
+                                            >
+                                                <div
+                                                    className="w-8 h-8 rounded-lg shadow-inner border border-slate-200"
+                                                    style={isTransparent ? {
+                                                        backgroundImage: `
                           linear-gradient(45deg, #ccc 25%, transparent 25%),
                           linear-gradient(-45deg, #ccc 25%, transparent 25%),
                           linear-gradient(45deg, transparent 75%, #ccc 75%),
                           linear-gradient(-45deg, transparent 75%, #ccc 75%)
                         `,
-                                                backgroundSize: '8px 8px',
-                                                backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
-                                                backgroundColor: '#fff'
-                                            } : { backgroundColor: uint32ToHex(pixel.color) }}
-                                        />
-                                        <div>
-                                            <div className="text-sm font-medium text-slate-700">
-                                                ({pixel.px}, {pixel.py})
-                                                {isTransparent && <span className="text-slate-400 ml-1 text-xs">(erased)</span>}
+                                                        backgroundSize: '8px 8px',
+                                                        backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
+                                                        backgroundColor: '#fff'
+                                                    } : { backgroundColor: uint32ToHex(pixel.color) }}
+                                                />
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-700">
+                                                        ({pixel.px}, {pixel.py})
+                                                        {isTransparent && <span className="text-slate-400 ml-1 text-xs">(erased)</span>}
+                                                    </div>
+                                                    <div className="text-xs text-slate-400">
+                                                        Local pixel
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-slate-400">
-                                                Local pixel
-                                            </div>
-                                        </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Unlocked Shards Panel */}
+                    {showRecentShards && (
+                        <div className="w-72 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-64">
+                            <div className="p-3 border-b border-slate-200 font-semibold text-slate-700 flex items-center justify-between shrink-0">
+                                <span className="flex items-center gap-2">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                                        <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                                    </svg>
+                                    Unlocked Shards
+                                </span>
+                                <button onClick={() => setShowRecentShards(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                            </div>
+                            <div className="overflow-y-auto flex-1">
+                                {recentUnlockedShards.length === 0 ? (
+                                    <div className="p-4 text-center text-slate-400 text-sm">
+                                        No shards unlocked yet. Hover over shards and click "Unlock" to start!
                                     </div>
-                                );
-                            })
-                        )}
-                    </div>
+                                ) : (
+                                    recentUnlockedShards.slice(0, 20).map((shard) => {
+                                        const timeAgo = Math.floor((Date.now() - shard.timestamp) / 1000);
+                                        const timeStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.floor(timeAgo / 60)}m ago`;
+                                        return (
+                                            <div
+                                                key={`${shard.x}-${shard.y}`}
+                                                className="p-3 hover:bg-slate-50 cursor-pointer transition-colors flex items-center gap-3 border-b border-slate-100 last:border-0"
+                                                onClick={() => {
+                                                    // Navigate to shard center
+                                                    const centerPx = (shard.x + 0.5) * SHARD_DIMENSION;
+                                                    const centerPy = (shard.y + 0.5) * SHARD_DIMENSION;
+                                                    const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
+                                                    mapRef.current?.setView([lat, lon], 13, { animate: true });
+                                                    
+                                                    // Trigger highlight animation after map settles
+                                                    setTimeout(() => {
+                                                        setHighlightShard({ x: shard.x, y: shard.y });
+                                                        // Clear after animation
+                                                        setTimeout(() => setHighlightShard(null), 1500);
+                                                    }, 300);
+                                                }}
+                                            >
+                                                <div className="w-8 h-8 rounded-lg shadow-inner border border-emerald-200 bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                                                        <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                                                    </svg>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="text-sm font-medium text-slate-700">
+                                                        Shard ({shard.x}, {shard.y})
+                                                    </div>
+                                                    <div className="text-xs text-slate-400">
+                                                        {timeStr}
+                                                    </div>
+                                                </div>
+                                                <div className="text-emerald-500">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="9 18 15 12 9 6"/>
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -555,8 +730,24 @@ export function PixelCanvas() {
 
             {/* Debug Panel - only visible in development */}
             {import.meta.env.DEV && (
-                <div className="absolute bottom-4 left-4 z-50 bg-black/80 text-white text-xs font-mono px-3 py-2 rounded-lg">
+                <div className="absolute bottom-4 left-4 z-50 bg-black/80 text-white text-xs font-mono px-3 py-2 rounded-lg max-h-48 overflow-y-auto">
                     <div>Zoom: {currentZoom.toFixed(1)}</div>
+                    {showShardGrid && (
+                        <>
+                            <div className="mt-1 border-t border-white/20 pt-1">
+                                Visible Shards: {visibleShards.length}
+                            </div>
+                            {visibleShards.length > 0 && (
+                                <div className="mt-1 text-[10px] opacity-75 max-h-24 overflow-y-auto">
+                                    {visibleShards.map((shard) => (
+                                        <div key={`${shard.x}-${shard.y}`}>
+                                            ({shard.x}, {shard.y})
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             )}
         </div>

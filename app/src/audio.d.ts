@@ -13,3 +13,9 @@ declare module '*.ogg' {
     const src: string;
     export default src;
 }
+
+// Image file declarations
+declare module '*.jpg' {
+    const src: string;
+    export default src;
+}
