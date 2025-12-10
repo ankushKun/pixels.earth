@@ -82,6 +82,439 @@ export type Magicplace = {
       ]
     },
     {
+      "name": "delegateShard",
+      "docs": [
+        "Delegate an existing shard to Ephemeral Rollups",
+        "This should be called after initialize_shard in a separate transaction"
+      ],
+      "discriminator": [
+        193,
+        43,
+        22,
+        82,
+        105,
+        20,
+        98,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The authority requesting delegation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bufferPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                167,
+                183,
+                223,
+                207,
+                199,
+                14,
+                206,
+                3,
+                154,
+                170,
+                74,
+                197,
+                117,
+                125,
+                32,
+                89,
+                54,
+                49,
+                88,
+                141,
+                30,
+                85,
+                95,
+                170,
+                252,
+                208,
+                96,
+                129,
+                53,
+                227,
+                237,
+                67
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "pda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shardX"
+              },
+              {
+                "kind": "arg",
+                "path": "shardY"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "shardX",
+          "type": "u16"
+        },
+        {
+          "name": "shardY",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "delegateUser",
+      "docs": [
+        "Delegate a user session account to Ephemeral Rollups",
+        "This should be called after initialize_user in a separate transaction"
+      ],
+      "discriminator": [
+        237,
+        220,
+        199,
+        24,
+        59,
+        41,
+        247,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "The session account to delegate"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "The session key authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bufferPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                167,
+                183,
+                223,
+                207,
+                199,
+                14,
+                206,
+                3,
+                154,
+                170,
+                74,
+                197,
+                117,
+                125,
+                32,
+                89,
+                54,
+                49,
+                88,
+                141,
+                30,
+                85,
+                95,
+                170,
+                252,
+                208,
+                96,
+                129,
+                53,
+                227,
+                237,
+                67
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "pda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ownerProgram",
+          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "mainWallet",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "erasePixel",
       "docs": [
         "Erase a pixel (set to 0/transparent)"
@@ -151,10 +584,10 @@ export type Magicplace = {
     {
       "name": "initializeShard",
       "docs": [
-        "Initialize a shard at (shard_x, shard_y) coordinates and delegate to ER",
+        "Initialize a shard at (shard_x, shard_y) coordinates (without delegation)",
         "Shards are created on-demand when a user wants to paint in that region",
         "shard_x, shard_y: 0-4095 (4096 shards per dimension)",
-        "After initialization, the shard is automatically delegated to Ephemeral Rollups"
+        "Call delegate_shard separately after this to delegate to ER"
       ],
       "discriminator": [
         100,
@@ -199,7 +632,7 @@ export type Magicplace = {
         {
           "name": "authority",
           "docs": [
-            "The authority paying for initialization and delegation"
+            "The authority paying for initialization"
           ],
           "writable": true,
           "signer": true
@@ -207,171 +640,6 @@ export type Magicplace = {
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "bufferPda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  98,
-                  117,
-                  102,
-                  102,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pda"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                167,
-                183,
-                223,
-                207,
-                199,
-                14,
-                206,
-                3,
-                154,
-                170,
-                74,
-                197,
-                117,
-                125,
-                32,
-                89,
-                54,
-                49,
-                88,
-                141,
-                30,
-                85,
-                95,
-                170,
-                252,
-                208,
-                96,
-                129,
-                53,
-                227,
-                237,
-                67
-              ]
-            }
-          }
-        },
-        {
-          "name": "delegationRecordPda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pda"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegationProgram"
-            }
-          }
-        },
-        {
-          "name": "delegationMetadataPda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  45,
-                  109,
-                  101,
-                  116,
-                  97,
-                  100,
-                  97,
-                  116,
-                  97
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pda"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegationProgram"
-            }
-          }
-        },
-        {
-          "name": "pda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  104,
-                  97,
-                  114,
-                  100
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "shardX"
-              },
-              {
-                "kind": "arg",
-                "path": "shardY"
-              }
-            ]
-          }
-        },
-        {
-          "name": "ownerProgram",
-          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
-        },
-        {
-          "name": "delegationProgram",
-          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
         }
       ],
       "args": [
@@ -439,171 +707,8 @@ export type Magicplace = {
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "bufferPda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  98,
-                  117,
-                  102,
-                  102,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pda"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                167,
-                183,
-                223,
-                207,
-                199,
-                14,
-                206,
-                3,
-                154,
-                170,
-                74,
-                197,
-                117,
-                125,
-                32,
-                89,
-                54,
-                49,
-                88,
-                141,
-                30,
-                85,
-                95,
-                170,
-                252,
-                208,
-                96,
-                129,
-                53,
-                227,
-                237,
-                67
-              ]
-            }
-          }
-        },
-        {
-          "name": "delegationRecordPda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pda"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegationProgram"
-            }
-          }
-        },
-        {
-          "name": "delegationMetadataPda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  45,
-                  109,
-                  101,
-                  116,
-                  97,
-                  100,
-                  97,
-                  116,
-                  97
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pda"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegationProgram"
-            }
-          }
-        },
-        {
-          "name": "pda",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "mainWallet"
-              }
-            ]
-          }
-        },
-        {
           "name": "instructionsSysvar",
           "address": "Sysvar1nstructions1111111111111111111111111"
-        },
-        {
-          "name": "ownerProgram",
-          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
-        },
-        {
-          "name": "delegationProgram",
-          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
         }
       ],
       "args": [

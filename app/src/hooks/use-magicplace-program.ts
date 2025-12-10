@@ -324,6 +324,56 @@ export function useMagicplaceProgram() {
         }
     }, [program, connection]);
 
+    /**
+     * Delegate a user session account to Ephemeral Rollups.
+     * This should be called after initializeUser in a separate transaction.
+     * 
+     * @param sessionKeypair - The session keypair
+     * @param mainWallet - The main wallet public key
+     */
+    const delegateUser = useCallback(async (
+        sessionKeypair: Keypair,
+        mainWallet: PublicKey
+    ): Promise<string> => {
+        if (!program) {
+            throw new Error("Program not initialized");
+        }
+
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // Build the delegation transaction
+            const tx = await program.methods
+                .delegateUser(mainWallet)
+                .accounts({
+                    authority: sessionKeypair.publicKey,
+                })
+                .transaction();
+
+            // Set up transaction
+            tx.feePayer = sessionKeypair.publicKey;
+            tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+            // Sign with session keypair
+            tx.sign(sessionKeypair);
+
+            // Send transaction
+            const signature = await connection.sendRawTransaction(tx.serialize(), {
+                skipPreflight: true, // Required for delegation CPI
+            });
+            await connection.confirmTransaction(signature, "confirmed");
+
+            return signature;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Failed to delegate user";
+            setError(message);
+            throw err;
+        } finally {
+            setIsLoading(false);
+        }
+    }, [program, connection]);
+
     // ========================================
     // Pixel Placement Functions
     // ========================================
@@ -649,6 +699,7 @@ export function useMagicplaceProgram() {
 
         // User session management
         initializeUser,
+        delegateUser,
         deriveSessionPDA,
 
         // Pixel operations (base layer)

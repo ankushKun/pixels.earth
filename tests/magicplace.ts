@@ -98,7 +98,10 @@ describe("magicplace", () => {
   // ========================================
 
   describe("initializeUser", () => {
-    it("initializes a user session account with Ed25519 signature verification", async () => {
+    it("initializes a user session account with Ed25519 signature verification and delegates to ER", async () => {
+      const start = Date.now();
+
+      // Step 1: Initialize user with Ed25519 signature verification
       // Generate the authorization message
       const authMessage = generateAuthMessage(sessionKeypair.publicKey, authority.publicKey);
       const messageBytes = new TextEncoder().encode(authMessage);
@@ -111,21 +114,6 @@ describe("magicplace", () => {
       console.log("Auth message:", authMessage);
       console.log("Signature length:", signature.length);
 
-      const start = Date.now();
-
-      // Get remaining accounts for local validator
-      const remainingAccounts = providerEphemeralRollup.connection.rpcEndpoint.includes("localhost") ||
-        providerEphemeralRollup.connection.rpcEndpoint.includes("127.0.0.1") ||
-        providerEphemeralRollup.connection.rpcEndpoint.includes("0.0.0.0")
-        ? [
-          {
-            pubkey: new web3.PublicKey("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev"),
-            isSigner: false,
-            isWritable: false,
-          },
-        ]
-        : [];
-
       // Create Ed25519 signature verification instruction
       // This MUST be the first instruction in the transaction
       const ed25519Ix = Ed25519Program.createInstructionWithPublicKey({
@@ -134,14 +122,13 @@ describe("magicplace", () => {
         signature: signature,
       });
 
-      // Build the program instruction
+      // Build the program instruction (no delegation in this step)
       const programIx = await program.methods
         .initializeUser(authority.publicKey, Array.from(signature) as number[])
         .accounts({
           authority: sessionKeypair.publicKey,
-          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          // instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .remainingAccounts(remainingAccounts)
         .instruction();
 
       // Create transaction with Ed25519 verify as first instruction
@@ -154,16 +141,64 @@ describe("magicplace", () => {
       const txHash = await provider.connection.sendRawTransaction(tx.serialize(), {
         skipPreflight: true,
       });
-      await provider.connection.confirmTransaction(txHash, "confirmed");
+      const confirmation = await provider.connection.confirmTransaction(txHash, "confirmed");
 
       const duration = Date.now() - start;
       console.log(`${duration}ms initializeUser txHash: ${txHash}`);
+
+      // Check if transaction succeeded
+      if (confirmation.value.err) {
+        // Get transaction details to see the error
+        const txDetails = await provider.connection.getTransaction(txHash, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        console.error("Transaction failed with error:", JSON.stringify(confirmation.value.err));
+        console.error("Transaction logs:", txDetails?.meta?.logMessages);
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
 
       // Verify the session account
       const sessionAccount = await program.account.sessionAccount.fetch(sessionPDA);
       expect(sessionAccount.mainAddress.toBase58()).to.equal(authority.publicKey.toBase58());
       expect(sessionAccount.authority.toBase58()).to.equal(sessionKeypair.publicKey.toBase58());
       expect(sessionAccount.ownedShards.toNumber()).to.equal(0);
+
+      // Step 2: Immediately delegate user to ER
+      const remainingAccounts = providerEphemeralRollup.connection.rpcEndpoint.includes("localhost") ||
+        providerEphemeralRollup.connection.rpcEndpoint.includes("127.0.0.1") ||
+        providerEphemeralRollup.connection.rpcEndpoint.includes("0.0.0.0")
+        ? [
+          {
+            pubkey: new web3.PublicKey("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev"),
+            isSigner: false,
+            isWritable: false,
+          },
+        ]
+        : [];
+
+      // Build the delegation transaction
+      const delegateTx = await program.methods
+        .delegateUser(authority.publicKey)
+        .accounts({
+          authority: sessionKeypair.publicKey,
+        })
+        .remainingAccounts(remainingAccounts)
+        .transaction();
+
+      delegateTx.feePayer = sessionKeypair.publicKey;
+      delegateTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+      delegateTx.sign(sessionKeypair);
+
+      const delegateTxHash = await provider.connection.sendRawTransaction(delegateTx.serialize(), {
+        skipPreflight: true,
+      });
+      await provider.connection.confirmTransaction(delegateTxHash, "confirmed");
+
+      console.log(`delegateUser txHash: ${delegateTxHash}`);
+
+      // Wait for delegation to propagate
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     });
   });
 
@@ -175,7 +210,24 @@ describe("magicplace", () => {
     it("initializes a shard and delegates to ER", async () => {
       const start = Date.now();
 
-      // Get remaining accounts for local validator
+      // Step 1: Initialize the shard (no delegation)
+      const initTx = await program.methods
+        .initializeShard(testShardX, testShardY)
+        .accounts({
+          authority: authority.publicKey,
+        })
+        .rpc();
+
+      console.log(`initializeShard txHash: ${initTx}`);
+
+      // Verify the shard was created on base layer
+      const shardAccount = await program.account.pixelShard.fetch(shardPDA);
+      expect(shardAccount.shardX).to.equal(testShardX);
+      expect(shardAccount.shardY).to.equal(testShardY);
+      expect(shardAccount.creator.toBase58()).to.equal(authority.publicKey.toBase58());
+      expect(shardAccount.pixels.length).to.equal(8192); // 128*128/2 bytes (4-bit packed)
+
+      // Step 2: Delegate the shard to ER
       const remainingAccounts = providerEphemeralRollup.connection.rpcEndpoint.includes("localhost") ||
         providerEphemeralRollup.connection.rpcEndpoint.includes("127.0.0.1") ||
         providerEphemeralRollup.connection.rpcEndpoint.includes("0.0.0.0")
@@ -188,8 +240,8 @@ describe("magicplace", () => {
         ]
         : [];
 
-      const tx = await program.methods
-        .initializeShard(testShardX, testShardY)
+      const delegateTx = await program.methods
+        .delegateShard(testShardX, testShardY)
         .accounts({
           authority: authority.publicKey,
         })
@@ -197,17 +249,10 @@ describe("magicplace", () => {
         .rpc({ skipPreflight: true });
 
       const duration = Date.now() - start;
-      console.log(`${duration}ms initializeShard txHash: ${tx}`);
+      console.log(`${duration}ms delegateShard txHash: ${delegateTx}`);
 
       // Wait for delegation to propagate
       await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Verify the shard was created
-      const shardAccount = await program.account.pixelShard.fetch(shardPDA);
-      expect(shardAccount.shardX).to.equal(testShardX);
-      expect(shardAccount.shardY).to.equal(testShardY);
-      expect(shardAccount.creator.toBase58()).to.equal(authority.publicKey.toBase58());
-      expect(shardAccount.pixels.length).to.equal(8192); // 128*128/2 bytes (4-bit packed)
     });
 
     it("initializes a second shard at different coordinates", async () => {
@@ -215,6 +260,22 @@ describe("magicplace", () => {
       const shardY = 0;
       const shard2PDA = deriveShardPDA(shardX, shardY);
 
+      // Step 1: Initialize the shard
+      const initTx = await program.methods
+        .initializeShard(shardX, shardY)
+        .accounts({
+          authority: authority.publicKey,
+        })
+        .rpc();
+
+      console.log(`initializeShard (1,0) txHash: ${initTx}`);
+
+      // Verify shard created
+      const shardAccount = await program.account.pixelShard.fetch(shard2PDA);
+      expect(shardAccount.shardX).to.equal(shardX);
+      expect(shardAccount.shardY).to.equal(shardY);
+
+      // Step 2: Immediately delegate to ER
       const remainingAccounts = providerEphemeralRollup.connection.rpcEndpoint.includes("localhost") ||
         providerEphemeralRollup.connection.rpcEndpoint.includes("127.0.0.1") ||
         providerEphemeralRollup.connection.rpcEndpoint.includes("0.0.0.0")
@@ -227,19 +288,17 @@ describe("magicplace", () => {
         ]
         : [];
 
-      await program.methods
-        .initializeShard(shardX, shardY)
+      const delegateTx = await program.methods
+        .delegateShard(shardX, shardY)
         .accounts({
           authority: authority.publicKey,
         })
         .remainingAccounts(remainingAccounts)
         .rpc({ skipPreflight: true });
 
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      console.log(`delegateShard (1,0) txHash: ${delegateTx}`);
 
-      const shardAccount = await program.account.pixelShard.fetch(shard2PDA);
-      expect(shardAccount.shardX).to.equal(shardX);
-      expect(shardAccount.shardY).to.equal(shardY);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     });
   });
 

@@ -1,12 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions::{self, load_instruction_at_checked};
 
-/// Ed25519 program ID (native Solana program for signature verification)
+/// Ed25519 program ID: Ed25519SigVerify111111111111111111111111111
 const ED25519_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
-    0x06, 0xdf, 0xa0, 0x52, 0x0f, 0x9c, 0x66, 0x87,
-    0x79, 0x6b, 0xf1, 0x6a, 0x19, 0x01, 0x4f, 0x58,
-    0xf0, 0x87, 0x82, 0x0a, 0x5a, 0x81, 0xb9, 0x1a,
-    0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    3, 125, 70, 214, 124, 147, 251, 190, 18, 249, 66, 143,
+    131, 141, 64, 255, 5, 112, 116, 73, 39, 244, 138, 100,
+    252, 202, 112, 68, 128, 0, 0, 0,
 ]);
 use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
@@ -66,19 +65,6 @@ pub mod magicplace {
         );
         
         // Parse the Ed25519 instruction data to verify the signature matches
-        // Ed25519 instruction format:
-        // - 1 byte: number of signatures
-        // - For each signature (16 bytes header + variable data):
-        //   - 2 bytes: signature offset
-        //   - 2 bytes: signature length (always 64)
-        //   - 2 bytes: public key offset  
-        //   - 2 bytes: public key length (always 32)
-        //   - 2 bytes: message offset
-        //   - 2 bytes: message length
-        //   - 2 bytes: public key instruction index (0xFFFF for same instruction)
-        //   - 2 bytes: message instruction index (0xFFFF for same instruction)
-        //   - Then: signature bytes, public key bytes, message bytes
-        
         let ix_data = &ed25519_ix.data;
         require!(ix_data.len() >= 2, PixelError::InvalidAuth);
         
@@ -88,7 +74,6 @@ pub mod magicplace {
         // Parse the first signature header (starts at offset 2)
         require!(ix_data.len() >= 18, PixelError::InvalidAuth); // 2 + 16 bytes header
         
-        let _sig_offset = u16::from_le_bytes([ix_data[2], ix_data[3]]) as usize;
         let pubkey_offset = u16::from_le_bytes([ix_data[6], ix_data[7]]) as usize;
         
         // Extract the public key from the instruction data
@@ -115,6 +100,20 @@ pub mod magicplace {
         user.bump = ctx.bumps.user;
         
         msg!("Session account initialized for main wallet: {}", main_wallet);
+        Ok(())
+    }
+
+    /// Delegate a user session account to Ephemeral Rollups
+    /// This should be called after initialize_user in a separate transaction
+    pub fn delegate_user(
+        ctx: Context<DelegateUser>,
+        main_wallet: Pubkey,
+    ) -> Result<()> {
+        // Verify the caller is the authorized session key
+        require!(
+            ctx.accounts.user.authority == ctx.accounts.authority.key(),
+            PixelError::InvalidAuth
+        );
         
         // Delegate the session account to Ephemeral Rollups
         ctx.accounts.delegate_pda(
@@ -126,7 +125,7 @@ pub mod magicplace {
             },
         )?;
         
-        msg!("Session account delegated to ER");
+        msg!("Session account delegated to ER for wallet: {}", main_wallet);
         Ok(())
     }
 
@@ -134,12 +133,12 @@ pub mod magicplace {
     // Shard Management
     // ========================================
 
-    /// Initialize a shard at (shard_x, shard_y) coordinates and delegate to ER
+    /// Initialize a shard at (shard_x, shard_y) coordinates (without delegation)
     /// Shards are created on-demand when a user wants to paint in that region
     /// shard_x, shard_y: 0-4095 (4096 shards per dimension)
-    /// After initialization, the shard is automatically delegated to Ephemeral Rollups
+    /// Call delegate_shard separately after this to delegate to ER
     pub fn initialize_shard(
-        ctx: Context<InitializeAndDelegateShard>, 
+        ctx: Context<InitializeShard>, 
         shard_x: u16, 
         shard_y: u16
     ) -> Result<()> {
@@ -148,7 +147,7 @@ pub mod magicplace {
             PixelError::InvalidShardCoord
         );
         
-        // Step 1: Initialize the shard data
+        // Initialize the shard data
         let shard = &mut ctx.accounts.shard;
         shard.shard_x = shard_x;
         shard.shard_y = shard_y;
@@ -161,8 +160,17 @@ pub mod magicplace {
             "Shard ({}, {}) initialized with {} pixels ({} bytes packed)", 
             shard_x, shard_y, PIXELS_PER_SHARD, BYTES_PER_SHARD
         );
+        Ok(())
+    }
 
-        // Step 2: Delegate the shard to Ephemeral Rollups
+    /// Delegate an existing shard to Ephemeral Rollups
+    /// This should be called after initialize_shard in a separate transaction
+    pub fn delegate_shard(
+        ctx: Context<DelegateShard>,
+        shard_x: u16,
+        shard_y: u16,
+    ) -> Result<()> {
+        // Delegate the shard to Ephemeral Rollups
         ctx.accounts.delegate_pda(
             &ctx.accounts.authority,
             &[SHARD_SEED, &shard_x.to_le_bytes(), &shard_y.to_le_bytes()],
@@ -313,12 +321,10 @@ pub mod magicplace {
 // Account Structs
 // ========================================
 
-/// Initialize and delegate a user session account
-/// This creates the on-chain session account and delegates it to ER
+/// Initialize a user session account (without delegation)
 /// 
 /// IMPORTANT: The transaction must include an Ed25519 verify instruction as the FIRST
 /// instruction, verifying that main_wallet signed the authorization message.
-#[delegate]
 #[derive(Accounts)]
 #[instruction(main_wallet: Pubkey, signature: [u8; 64])]
 pub struct InitializeUser<'info> {
@@ -336,23 +342,43 @@ pub struct InitializeUser<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
-    /// CHECK: The PDA to delegate - same as user, used for delegation CPI
-    #[account(mut, del, seeds = [b"session", main_wallet.as_ref()], bump)]
-    pub pda: AccountInfo<'info>,
     /// CHECK: Instructions sysvar for Ed25519 signature verification
     #[account(address = instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
 }
 
-/// Combined initialization and delegation accounts struct
-/// This allows initializing a shard and delegating it to ER in a single transaction
+/// Delegate a user session account to Ephemeral Rollups
+/// This should be called after initialize_user in a separate transaction
 #[delegate]
 #[derive(Accounts)]
+#[instruction(main_wallet: Pubkey)]
+pub struct DelegateUser<'info> {
+    /// The session account to delegate
+    #[account(
+        mut,
+        seeds = [b"session", main_wallet.as_ref()],
+        bump = user.bump,
+        constraint = user.main_address == main_wallet @ PixelError::InvalidAuth
+    )]
+    pub user: Account<'info, SessionAccount>,
+    /// The session key authority
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    /// CHECK: The PDA to delegate - same as user, used for delegation CPI
+    #[account(mut, del, seeds = [b"session", main_wallet.as_ref()], bump)]
+    pub pda: AccountInfo<'info>,
+}
+
+/// Combined initialization and delegation accounts struct
+/// This allows initializing a shard and delegating it to ER in a single transaction
+/// Initialize a shard (without delegation)
+/// Call delegate_shard separately after this to delegate to ER
+#[derive(Accounts)]
 #[instruction(shard_x: u16, shard_y: u16)]
-pub struct InitializeAndDelegateShard<'info> {
+pub struct InitializeShard<'info> {
     /// The shard account to initialize
     #[account(
-        init_if_needed,
+        init,
         payer = authority,
         space = 8 + PixelShard::INIT_SPACE,
         seeds = [SHARD_SEED, &shard_x.to_le_bytes(), &shard_y.to_le_bytes()],
@@ -360,13 +386,24 @@ pub struct InitializeAndDelegateShard<'info> {
     )]
     pub shard: Account<'info, PixelShard>,
 
-    /// The authority paying for initialization and delegation
+    /// The authority paying for initialization
     #[account(mut)]
     pub authority: Signer<'info>,
 
     pub system_program: Program<'info, System>,
+}
 
-    /// CHECK: The PDA to delegate - same as shard, used for delegation CPI
+/// Delegate an existing shard to Ephemeral Rollups
+/// This should be called after initialize_shard in a separate transaction
+#[delegate]
+#[derive(Accounts)]
+#[instruction(shard_x: u16, shard_y: u16)]
+pub struct DelegateShard<'info> {
+    /// The authority requesting delegation
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// CHECK: The shard PDA to delegate - validated by seeds constraint
     #[account(mut, del, seeds = [SHARD_SEED, &shard_x.to_le_bytes(), &shard_y.to_le_bytes()], bump)]
     pub pda: AccountInfo<'info>,
 }
