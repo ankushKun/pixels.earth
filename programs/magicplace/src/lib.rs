@@ -1,7 +1,16 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar::instructions::{self, load_instruction_at_checked};
+
+/// Ed25519 program ID (native Solana program for signature verification)
+const ED25519_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
+    0x06, 0xdf, 0xa0, 0x52, 0x0f, 0x9c, 0x66, 0x87,
+    0x79, 0x6b, 0xf1, 0x6a, 0x19, 0x01, 0x4f, 0x58,
+    0xf0, 0x87, 0x82, 0x0a, 0x5a, 0x81, 0xb9, 0x1a,
+    0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+]);
 use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
-use ephemeral_rollups_sdk::ephem::{commit_accounts};
+use ephemeral_rollups_sdk::ephem::commit_accounts;
 
 declare_id!("CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE");
 
@@ -35,15 +44,102 @@ const AVAILABLE_COLORS: u8 = 15;
 pub mod magicplace {
     use super::*;
 
+    pub fn initialize_user(
+        ctx: Context<InitializeUser>,
+        main_wallet: Pubkey,
+        _signature: [u8; 64],
+    ) -> Result<()> {
+        // Verify Ed25519 signature using Solana's native Ed25519 program
+        // The frontend must include an Ed25519 verify instruction as the first instruction
+        // in the transaction. This program reads the instructions sysvar to verify it.
+        
+        let ix_sysvar = &ctx.accounts.instructions_sysvar;
+        
+        // Load the first instruction (index 0) - should be the Ed25519 verify instruction
+        let ed25519_ix = load_instruction_at_checked(0, ix_sysvar)
+            .map_err(|_| PixelError::InvalidAuth)?;
+        
+        // Verify it's from the Ed25519 program
+        require!(
+            ed25519_ix.program_id == ED25519_PROGRAM_ID,
+            PixelError::InvalidAuth
+        );
+        
+        // Parse the Ed25519 instruction data to verify the signature matches
+        // Ed25519 instruction format:
+        // - 1 byte: number of signatures
+        // - For each signature (16 bytes header + variable data):
+        //   - 2 bytes: signature offset
+        //   - 2 bytes: signature length (always 64)
+        //   - 2 bytes: public key offset  
+        //   - 2 bytes: public key length (always 32)
+        //   - 2 bytes: message offset
+        //   - 2 bytes: message length
+        //   - 2 bytes: public key instruction index (0xFFFF for same instruction)
+        //   - 2 bytes: message instruction index (0xFFFF for same instruction)
+        //   - Then: signature bytes, public key bytes, message bytes
+        
+        let ix_data = &ed25519_ix.data;
+        require!(ix_data.len() >= 2, PixelError::InvalidAuth);
+        
+        let num_signatures = ix_data[0];
+        require!(num_signatures >= 1, PixelError::InvalidAuth);
+        
+        // Parse the first signature header (starts at offset 2)
+        require!(ix_data.len() >= 18, PixelError::InvalidAuth); // 2 + 16 bytes header
+        
+        let _sig_offset = u16::from_le_bytes([ix_data[2], ix_data[3]]) as usize;
+        let pubkey_offset = u16::from_le_bytes([ix_data[6], ix_data[7]]) as usize;
+        
+        // Extract the public key from the instruction data
+        require!(ix_data.len() >= pubkey_offset + 32, PixelError::InvalidAuth);
+        let pubkey_bytes = &ix_data[pubkey_offset..pubkey_offset + 32];
+        let verified_pubkey = Pubkey::try_from(pubkey_bytes)
+            .map_err(|_| PixelError::InvalidAuth)?;
+        
+        // Verify the public key matches the main_wallet
+        require!(
+            verified_pubkey == main_wallet,
+            PixelError::InvalidAuth
+        );
+        
+        msg!("Ed25519 signature verified for main wallet: {}", main_wallet);
+        
+        // Initialize the session account
+        let user = &mut ctx.accounts.user;
+        user.main_address = main_wallet;
+        user.authority = ctx.accounts.authority.key();
+        user.owned_shards = 0;
+        user.cooldown_counter = 0;
+        user.last_place_timestamp = 0;
+        user.bump = ctx.bumps.user;
+        
+        msg!("Session account initialized for main wallet: {}", main_wallet);
+        
+        // Delegate the session account to Ephemeral Rollups
+        ctx.accounts.delegate_pda(
+            &ctx.accounts.authority,
+            &[b"session", main_wallet.as_ref()],
+            DelegateConfig {
+                validator: ctx.remaining_accounts.first().map(|acc| acc.key()),
+                ..Default::default()
+            },
+        )?;
+        
+        msg!("Session account delegated to ER");
+        Ok(())
+    }
+
     // ========================================
     // Shard Management
     // ========================================
 
-    /// Initialize a shard at (shard_x, shard_y) coordinates
+    /// Initialize a shard at (shard_x, shard_y) coordinates and delegate to ER
     /// Shards are created on-demand when a user wants to paint in that region
     /// shard_x, shard_y: 0-4095 (4096 shards per dimension)
+    /// After initialization, the shard is automatically delegated to Ephemeral Rollups
     pub fn initialize_shard(
-        ctx: Context<InitializeShard>, 
+        ctx: Context<InitializeAndDelegateShard>, 
         shard_x: u16, 
         shard_y: u16
     ) -> Result<()> {
@@ -52,6 +148,7 @@ pub mod magicplace {
             PixelError::InvalidShardCoord
         );
         
+        // Step 1: Initialize the shard data
         let shard = &mut ctx.accounts.shard;
         shard.shard_x = shard_x;
         shard.shard_y = shard_y;
@@ -64,6 +161,18 @@ pub mod magicplace {
             "Shard ({}, {}) initialized with {} pixels ({} bytes packed)", 
             shard_x, shard_y, PIXELS_PER_SHARD, BYTES_PER_SHARD
         );
+
+        // Step 2: Delegate the shard to Ephemeral Rollups
+        ctx.accounts.delegate_pda(
+            &ctx.accounts.authority,
+            &[SHARD_SEED, &shard_x.to_le_bytes(), &shard_y.to_le_bytes()],
+            DelegateConfig {
+                validator: ctx.remaining_accounts.first().map(|acc| acc.key()),
+                ..Default::default()
+            },
+        )?;
+        
+        msg!("Shard ({}, {}) delegated to ER", shard_x, shard_y);
         Ok(())
     }
 
@@ -183,30 +292,6 @@ pub mod magicplace {
     // MagicBlock Ephemeral Rollups Functions
     // ========================================
 
-    /// Delegate a shard to Ephemeral Rollups for fast transactions
-    pub fn delegate_shard(
-        ctx: Context<DelegateShardInput>, 
-        shard_x: u16, 
-        shard_y: u16
-    ) -> Result<()> {
-        require!(
-            (shard_x as u32) < SHARDS_PER_DIM && (shard_y as u32) < SHARDS_PER_DIM,
-            PixelError::InvalidShardCoord
-        );
-        
-        ctx.accounts.delegate_pda(
-            &ctx.accounts.payer,
-            &[SHARD_SEED, &shard_x.to_le_bytes(), &shard_y.to_le_bytes()],
-            DelegateConfig {
-                validator: ctx.remaining_accounts.first().map(|acc| acc.key()),
-                ..Default::default()
-            },
-        )?;
-        
-        msg!("Shard ({}, {}) delegated to ER", shard_x, shard_y);
-        Ok(())
-    }
-
     /// Commit shard state from ER to base layer
     pub fn commit_shard(
         ctx: Context<CommitShardInput>, 
@@ -228,9 +313,44 @@ pub mod magicplace {
 // Account Structs
 // ========================================
 
+/// Initialize and delegate a user session account
+/// This creates the on-chain session account and delegates it to ER
+/// 
+/// IMPORTANT: The transaction must include an Ed25519 verify instruction as the FIRST
+/// instruction, verifying that main_wallet signed the authorization message.
+#[delegate]
+#[derive(Accounts)]
+#[instruction(main_wallet: Pubkey, signature: [u8; 64])]
+pub struct InitializeUser<'info> {
+    /// Session account PDA derived from the MAIN wallet (not session key)
+    /// This ensures each main wallet has exactly one session account
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + SessionAccount::INIT_SPACE,
+        seeds = [b"session", main_wallet.as_ref()],
+        bump
+    )]
+    pub user: Account<'info, SessionAccount>,
+    /// The session key that is authorized to act on behalf of main_wallet
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: The PDA to delegate - same as user, used for delegation CPI
+    #[account(mut, del, seeds = [b"session", main_wallet.as_ref()], bump)]
+    pub pda: AccountInfo<'info>,
+    /// CHECK: Instructions sysvar for Ed25519 signature verification
+    #[account(address = instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
+}
+
+/// Combined initialization and delegation accounts struct
+/// This allows initializing a shard and delegating it to ER in a single transaction
+#[delegate]
 #[derive(Accounts)]
 #[instruction(shard_x: u16, shard_y: u16)]
-pub struct InitializeShard<'info> {
+pub struct InitializeAndDelegateShard<'info> {
+    /// The shard account to initialize
     #[account(
         init_if_needed,
         payer = authority,
@@ -240,10 +360,15 @@ pub struct InitializeShard<'info> {
     )]
     pub shard: Account<'info, PixelShard>,
 
+    /// The authority paying for initialization and delegation
     #[account(mut)]
     pub authority: Signer<'info>,
 
     pub system_program: Program<'info, System>,
+
+    /// CHECK: The PDA to delegate - same as shard, used for delegation CPI
+    #[account(mut, del, seeds = [SHARD_SEED, &shard_x.to_le_bytes(), &shard_y.to_le_bytes()], bump)]
+    pub pda: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -314,6 +439,19 @@ pub struct PixelShard {
     /// Creator of the shard (who paid for initialization)
     pub creator: Pubkey,
     /// PDA bump seed
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+// the session key will create this account and tell it which main wallet it belongs to
+// must verify signature from the main account before creating session account
+pub struct SessionAccount {
+    pub main_address: Pubkey,
+    pub authority: Pubkey,
+    pub owned_shards: u64,
+    pub cooldown_counter: u8,
+    pub last_place_timestamp: u64,
     pub bump: u8,
 }
 

@@ -14,20 +14,19 @@ export type Magicplace = {
   },
   "instructions": [
     {
-      "name": "commit",
+      "name": "commitShard",
       "docs": [
-        "Manual commit the counter account in the Ephemeral Rollup",
-        "This persists the current state to the base layer"
+        "Commit shard state from ER to base layer"
       ],
       "discriminator": [
-        223,
-        140,
-        142,
+        85,
+        249,
+        246,
+        67,
+        192,
+        89,
         165,
-        229,
-        208,
-        156,
-        74
+        50
       ],
       "accounts": [
         {
@@ -36,13 +35,27 @@ export type Magicplace = {
           "signer": true
         },
         {
-          "name": "counter",
+          "name": "shard",
           "writable": true,
           "pda": {
             "seeds": [
               {
-                "kind": "account",
-                "path": "payer"
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shardX"
+              },
+              {
+                "kind": "arg",
+                "path": "shardY"
               }
             ]
           }
@@ -57,33 +70,55 @@ export type Magicplace = {
           "address": "MagicContext1111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "shardX",
+          "type": "u16"
+        },
+        {
+          "name": "shardY",
+          "type": "u16"
+        }
+      ]
     },
     {
-      "name": "decrement",
+      "name": "erasePixel",
       "docs": [
-        "Decrement the counter by 1"
+        "Erase a pixel (set to 0/transparent)"
       ],
       "discriminator": [
-        106,
-        227,
-        168,
-        59,
+        6,
+        38,
         248,
-        27,
-        150,
-        101
+        220,
+        47,
+        82,
+        57,
+        222
       ],
       "accounts": [
         {
-          "name": "counter",
+          "name": "shard",
           "writable": true,
           "pda": {
             "seeds": [
               {
-                "kind": "account",
-                "path": "counter.authority",
-                "account": "counter"
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shardX"
+              },
+              {
+                "kind": "arg",
+                "path": "shardY"
               }
             ]
           }
@@ -92,35 +127,86 @@ export type Magicplace = {
           "name": "signer",
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "sessionToken",
-          "optional": true
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "shardX",
+          "type": "u16"
+        },
+        {
+          "name": "shardY",
+          "type": "u16"
+        },
+        {
+          "name": "px",
+          "type": "u32"
+        },
+        {
+          "name": "py",
+          "type": "u32"
+        }
+      ]
     },
     {
-      "name": "delegate",
+      "name": "initializeShard",
       "docs": [
-        "Delegate the counter account to the delegation program",
-        "Optionally set a specific validator from the first remaining account",
-        "See: https://docs.magicblock.gg/pages/get-started/how-integrate-your-program/local-setup"
+        "Initialize a shard at (shard_x, shard_y) coordinates and delegate to ER",
+        "Shards are created on-demand when a user wants to paint in that region",
+        "shard_x, shard_y: 0-4095 (4096 shards per dimension)",
+        "After initialization, the shard is automatically delegated to Ephemeral Rollups"
       ],
       "discriminator": [
-        90,
-        147,
-        75,
-        178,
-        85,
+        100,
+        96,
         88,
-        4,
-        137
+        58,
+        225,
+        178,
+        9,
+        147
       ],
       "accounts": [
         {
-          "name": "payer",
+          "name": "shard",
+          "docs": [
+            "The shard account to initialize"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shardX"
+              },
+              {
+                "kind": "arg",
+                "path": "shardY"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "The authority paying for initialization and delegation"
+          ],
+          "writable": true,
           "signer": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
         },
         {
           "name": "bufferPda",
@@ -259,8 +345,22 @@ export type Magicplace = {
           "pda": {
             "seeds": [
               {
-                "kind": "account",
-                "path": "payer"
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shardX"
+              },
+              {
+                "kind": "arg",
+                "path": "shardY"
               }
             ]
           }
@@ -272,40 +372,296 @@ export type Magicplace = {
         {
           "name": "delegationProgram",
           "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "shardX",
+          "type": "u16"
+        },
+        {
+          "name": "shardY",
+          "type": "u16"
+        }
+      ]
     },
     {
-      "name": "increment",
-      "docs": [
-        "Increment the counter by 1",
-        "Wraps around to 0 if count exceeds 1000 (for demo purposes)"
-      ],
+      "name": "initializeUser",
       "discriminator": [
-        11,
-        18,
-        104,
-        9,
-        104,
-        174,
-        59,
-        33
+        111,
+        17,
+        185,
+        250,
+        60,
+        122,
+        38,
+        254
       ],
       "accounts": [
         {
-          "name": "counter",
+          "name": "user",
+          "docs": [
+            "Session account PDA derived from the MAIN wallet (not session key)",
+            "This ensures each main wallet has exactly one session account"
+          ],
           "writable": true,
           "pda": {
             "seeds": [
               {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "The session key that is authorized to act on behalf of main_wallet"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "bufferPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
                 "kind": "account",
-                "path": "counter.authority",
-                "account": "counter"
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                167,
+                183,
+                223,
+                207,
+                199,
+                14,
+                206,
+                3,
+                154,
+                170,
+                74,
+                197,
+                117,
+                125,
+                32,
+                89,
+                54,
+                49,
+                88,
+                141,
+                30,
+                85,
+                95,
+                170,
+                252,
+                208,
+                96,
+                129,
+                53,
+                227,
+                237,
+                67
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataPda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pda"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "pda",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "mainWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructionsSysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "ownerProgram",
+          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        }
+      ],
+      "args": [
+        {
+          "name": "mainWallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "signature",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "placePixel",
+      "docs": [
+        "Place a pixel using global coordinates",
+        "px, py: 0 to 524,287 (global pixel coordinates)",
+        "color: 1-15 (0 is reserved for unset/transparent, 4-bit packing)"
+      ],
+      "discriminator": [
+        178,
+        40,
+        167,
+        97,
+        31,
+        149,
+        219,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "shard",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shardX"
+              },
+              {
+                "kind": "arg",
+                "path": "shardY"
               }
             ]
           }
@@ -314,54 +670,30 @@ export type Magicplace = {
           "name": "signer",
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "sessionToken",
-          "optional": true
         }
       ],
-      "args": []
-    },
-    {
-      "name": "initialize",
-      "docs": [
-        "Initialize a new counter account with count set to 0",
-        "Uses PDA derivation with user's public key for deterministic addresses"
-      ],
-      "discriminator": [
-        175,
-        175,
-        109,
-        31,
-        13,
-        152,
-        155,
-        237
-      ],
-      "accounts": [
+      "args": [
         {
-          "name": "counter",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "authority"
-              }
-            ]
-          }
+          "name": "shardX",
+          "type": "u16"
         },
         {
-          "name": "authority",
-          "writable": true,
-          "signer": true
+          "name": "shardY",
+          "type": "u16"
         },
         {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
+          "name": "px",
+          "type": "u32"
+        },
+        {
+          "name": "py",
+          "type": "u32"
+        },
+        {
+          "name": "color",
+          "type": "u8"
         }
-      ],
-      "args": []
+      ]
     },
     {
       "name": "processUndelegation",
@@ -399,183 +731,187 @@ export type Magicplace = {
           }
         }
       ]
-    },
-    {
-      "name": "set",
-      "docs": [
-        "Set the counter to a specific value"
-      ],
-      "discriminator": [
-        198,
-        51,
-        53,
-        241,
-        116,
-        29,
-        126,
-        194
-      ],
-      "accounts": [
-        {
-          "name": "counter",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "counter.authority",
-                "account": "counter"
-              }
-            ]
-          }
-        },
-        {
-          "name": "signer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "sessionToken",
-          "optional": true
-        }
-      ],
-      "args": [
-        {
-          "name": "value",
-          "type": "u64"
-        }
-      ]
-    },
-    {
-      "name": "undelegate",
-      "docs": [
-        "Undelegate the counter account from the delegation program",
-        "This commits and removes the account from the Ephemeral Rollup"
-      ],
-      "discriminator": [
-        131,
-        148,
-        180,
-        198,
-        91,
-        104,
-        42,
-        238
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "counter",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "payer"
-              }
-            ]
-          }
-        },
-        {
-          "name": "magicProgram",
-          "address": "Magic11111111111111111111111111111111111111"
-        },
-        {
-          "name": "magicContext",
-          "writable": true,
-          "address": "MagicContext1111111111111111111111111111111"
-        }
-      ],
-      "args": []
     }
   ],
   "accounts": [
     {
-      "name": "counter",
+      "name": "pixelShard",
       "discriminator": [
-        255,
-        176,
-        4,
-        245,
-        188,
-        253,
-        124,
+        71,
+        74,
+        139,
+        167,
+        18,
+        144,
+        148,
         25
       ]
     },
     {
-      "name": "sessionToken",
+      "name": "sessionAccount",
       "discriminator": [
-        233,
-        4,
-        115,
-        14,
-        46,
+        74,
+        34,
+        65,
+        133,
+        96,
+        163,
+        80,
+        69
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "pixelChanged",
+      "discriminator": [
+        140,
+        76,
         21,
+        27,
+        179,
+        226,
         1,
-        15
+        84
       ]
     }
   ],
   "errors": [
     {
       "code": 6000,
-      "name": "counterUnderflow",
-      "msg": "Counter cannot go below zero"
+      "name": "invalidShardCoord",
+      "msg": "Invalid shard coordinates: must be 0-4095"
     },
     {
       "code": 6001,
+      "name": "invalidPixelCoord",
+      "msg": "Invalid pixel coordinates: must be 0-524287"
+    },
+    {
+      "code": 6002,
+      "name": "shardMismatch",
+      "msg": "Shard coordinates don't match pixel location"
+    },
+    {
+      "code": 6003,
+      "name": "invalidColor",
+      "msg": "Invalid color: must be 1-15 (4-bit)"
+    },
+    {
+      "code": 6004,
       "name": "invalidAuth",
       "msg": "Invalid authentication"
     }
   ],
   "types": [
     {
-      "name": "counter",
+      "name": "pixelChanged",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "count",
-            "docs": [
-              "The current count value"
-            ],
-            "type": "u64"
+            "name": "px",
+            "type": "u32"
           },
           {
-            "name": "authority",
-            "docs": [
-              "The authority who can update the counter"
-            ],
+            "name": "py",
+            "type": "u32"
+          },
+          {
+            "name": "color",
+            "type": "u8"
+          },
+          {
+            "name": "painter",
             "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "u64"
           }
         ]
       }
     },
     {
-      "name": "sessionToken",
+      "name": "pixelShard",
+      "docs": [
+        "A single shard of the pixel canvas",
+        "Each shard stores 16,384 pixels (128×128 grid) using 4-bit packed colors = ~8KB",
+        "Up to 16,777,216 shards (4096×4096 grid) can cover the full 524,288×524,288 canvas",
+        "Shards are created on-demand when users paint in new regions"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "shardX",
+            "docs": [
+              "Shard X coordinate (0-4095)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "shardY",
+            "docs": [
+              "Shard Y coordinate (0-4095)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "pixels",
+            "docs": [
+              "Pixel data - 4-bit packed storage (2 pixels per byte)",
+              "Byte index = pixel_id / 2",
+              "Even pixels in high nibble (bits 4-7), odd pixels in low nibble (bits 0-3)",
+              "Value = color_index (0 = unset/transparent, 1-15 = palette colors)"
+            ],
+            "type": "bytes"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator of the shard (who paid for initialization)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sessionAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mainAddress",
+            "type": "pubkey"
+          },
           {
             "name": "authority",
             "type": "pubkey"
           },
           {
-            "name": "targetProgram",
-            "type": "pubkey"
+            "name": "ownedShards",
+            "type": "u64"
           },
           {
-            "name": "sessionSigner",
-            "type": "pubkey"
+            "name": "cooldownCounter",
+            "type": "u8"
           },
           {
-            "name": "validUntil",
-            "type": "i64"
+            "name": "lastPlaceTimestamp",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

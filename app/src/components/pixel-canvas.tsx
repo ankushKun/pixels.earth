@@ -22,6 +22,7 @@ import { Button } from './ui/button';
 import { Eraser, Grid2X2Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePopSound } from '../hooks/use-pop-sound';
+import { useMagicplaceProgram } from '../hooks/use-magicplace-program';
 
 // Icons as inline SVGs
 const PaintBrushIcon = () => (
@@ -193,12 +194,72 @@ export function PixelCanvas() {
     const [recentUnlockedShards, setRecentUnlockedShards] = useState<{ x: number; y: number; timestamp: number }[]>([]);
     const [highlightShard, setHighlightShard] = useState<{ x: number; y: number } | null>(null);
 
-    // Placeholder: log when visible shards are fetchable (< 90) and zoomed in enough
+    // Magicplace program hook for checking shard delegation status
+    const { checkShardDelegation } = useMagicplaceProgram();
+
+    // Track which shards we're currently checking to avoid duplicate requests
+    const checkingShards = useRef<Set<string>>(new Set());
+
+    // Check delegation status for visible shards
+    // An initialized shard is always delegated, so we check if account exists and is delegated
     useEffect(() => {
-        if (currentZoom >= 12 && visibleShards.length > 0 && visibleShards.length < 90) {
-            console.log(`Fetching ${visibleShards.length} shards`);
+        if (currentZoom < 12 || visibleShards.length === 0 || visibleShards.length >= 90) {
+            return;
         }
-    }, [visibleShards, currentZoom]);
+
+        const checkShards = async () => {
+            // Filter to shards that need checking
+            const shardsToCheck = visibleShards.filter(shard => {
+                const shardKey = `${shard.x},${shard.y}`;
+                return !unlockedShards.has(shardKey) && !checkingShards.current.has(shardKey);
+            });
+
+            if (shardsToCheck.length === 0) return;
+
+            // Mark all as checking
+            shardsToCheck.forEach(shard => {
+                checkingShards.current.add(`${shard.x},${shard.y}`);
+            });
+
+            // Check all shards in parallel
+            const results = await Promise.all(
+                shardsToCheck.map(async shard => {
+                    const shardKey = `${shard.x},${shard.y}`;
+                    try {
+                        const status = await checkShardDelegation(shard.x, shard.y);
+                        return { shard, shardKey, status, error: null };
+                    } catch (err) {
+                        console.debug(`Failed to check shard (${shard.x}, ${shard.y}):`, err);
+                        return { shard, shardKey, status: null, error: err };
+                    } finally {
+                        checkingShards.current.delete(shardKey);
+                    }
+                })
+            );
+
+            // Process results
+            const delegatedShards = results.filter(r => r.status === 'delegated');
+            
+            if (delegatedShards.length > 0) {
+                setUnlockedShards(prev => {
+                    const newSet = new Set(prev);
+                    delegatedShards.forEach(r => newSet.add(r.shardKey));
+                    return newSet;
+                });
+
+                setRecentUnlockedShards(prev => {
+                    let updated = [...prev];
+                    delegatedShards.forEach(r => {
+                        updated = updated.filter(s => !(s.x === r.shard.x && s.y === r.shard.y));
+                        updated.unshift({ x: r.shard.x, y: r.shard.y, timestamp: Date.now() });
+                    });
+                    return updated.slice(0, 50);
+                });
+            }
+        };
+
+        checkShards();
+    }, [visibleShards, currentZoom, checkShardDelegation, unlockedShards]);
 
     // Force crosshair cursor on map container
     useEffect(() => {
