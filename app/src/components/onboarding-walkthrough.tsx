@@ -187,13 +187,13 @@ export default function OnboardingWalkthrough({ onComplete }: Props) {
   }, [wallet, connection, createSessionKey, checkUserDelegation, initializeUser, delegateUser, nickname]);
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-[100] flex flex-col items-center justify-center p-4 font-sans">
+    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-100 flex flex-col items-center justify-center p-4 font-sans">
       <div className="bg-white rounded-[2.5rem] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.2)] max-w-[24rem] w-full overflow-hidden border border-zinc-100 p-8 transform transition-all duration-300 ease-in-out">
         
         {/* Header */}
         <div className="flex flex-col items-center text-center">
              {step === "complete" ? (
-                <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-inner text-emerald-500 animate-[bounce_1s_infinite]">
+                <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-inner text-emerald-500 animate-bounce">
                     <CheckIcon size={40} />
                 </div>
              ) : (

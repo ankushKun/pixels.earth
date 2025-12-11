@@ -1261,7 +1261,7 @@ export function PixelCanvas() {
                                                     }, 300);
                                                 }}
                                             >
-                                                <div className="w-8 h-8 rounded-lg shadow-inner border border-emerald-200 bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
+                                                <div className="w-8 h-8 rounded-lg shadow-inner border border-emerald-200 bg-linear-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                         <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
                                                         <path d="M7 11V7a5 5 0 0 1 9.9-1" />

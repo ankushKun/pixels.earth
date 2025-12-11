@@ -86,7 +86,7 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
   );
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-sans">
+    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-100 flex items-center justify-center p-4 font-sans">
       <div className="bg-white rounded-[2.5rem] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.2)] max-w-[24rem] w-full overflow-hidden border border-zinc-100 p-8 transform transition-all duration-300 ease-in-out">
         
         {/* Header Content */}
@@ -242,7 +242,7 @@ const Transition = ({ show, children, className = "" }: { show: boolean; childre
     if (!shouldRender) return null;
 
     return (
-        <div className={`fixed inset-0 z-[100] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${styles} ${className}`}>
+        <div className={`fixed inset-0 z-100 transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${styles} ${className}`}>
              {/* We use a relative container to ensure children with absolute/fixed positioning are contained if needed,
                  though 'fixed' children in a transformed parent work relatively. */}
             {children}
