@@ -20,12 +20,12 @@ const server = serve({
     },
 
     "/api/pixels": () => {
-        const pixels = db.prepare('SELECT * FROM pixel_events ORDER BY timestamp DESC LIMIT 100').all();
+        const pixels = db.prepare('SELECT * FROM pixel_events ORDER BY timestamp DESC, id DESC LIMIT 100').all();
         return Response.json(pixels);
     },
 
     "/api/feed": () => {
-        const pixels = db.prepare('SELECT * FROM pixel_events ORDER BY timestamp DESC LIMIT 15').all();
+        const pixels = db.prepare('SELECT * FROM pixel_events ORDER BY timestamp DESC, id DESC LIMIT 15').all();
         const shards = db.prepare('SELECT * FROM shards ORDER BY timestamp DESC LIMIT 15').all();
         return Response.json({ pixels, shards });
     },

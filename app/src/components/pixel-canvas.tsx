@@ -19,7 +19,7 @@ import {
 } from '../constants';
 import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
-import { Eraser, Grid2X2Plus } from 'lucide-react';
+import { Brush, Eraser, Grid2X2Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePopSound } from '../hooks/use-pop-sound';
 import { useMagicplaceProgram } from '../hooks/use-magicplace-program';
@@ -140,8 +140,28 @@ function saveMapView(center: [number, number], zoom: number) {
     }
 }
 
-function Color({color, selected, onClick}: {color: string, selected: boolean, onClick: () => void}) {
-    return <Button className="w-full h-10" style={{backgroundColor: color}} onClick={onClick} variant={selected ? "default" : "outline"}></Button>
+function Color({ color, selected, onClick }: { color: string, selected: boolean, onClick: () => void }) {
+    return (
+        <Button
+            className={cn(
+                "w-full h-10 p-0 relative overflow-visible transition-all duration-200",
+                selected
+                    ? "ring-1 ring-zinc-800 scale-105 z-10 shadow-lg"
+                    : "hover:scale-105 hover:shadow opacity-90 hover:opacity-100 ring-1 ring-black/5"
+            )}
+            style={{ backgroundColor: color }}
+            onClick={onClick}
+            variant={"ghost"}
+        >
+                <div className="absolute inset-0 flex items-center justify-center">
+                <Brush className={cn("w-5 h-5 bg-blend-darken transition-all duration-200",
+                    selected ? "opacity-100" : "opacity-0",
+                    color=="#FFFFFF" ? "text-black" : "text-white"
+                )} />
+                </div>
+            <span className="sr-only">Select color {color}</span>
+        </Button>
+    );
 }
 
 export function PixelCanvas() {
@@ -201,9 +221,9 @@ export function PixelCanvas() {
     const [unlockingShard, setUnlockingShard] = useState<{ x: number; y: number; status: string } | null>(null);
 
     // Magicplace program hook for checking shard delegation status
-    const { 
-        checkShardDelegation, 
-        initializeShard, 
+    const {
+        checkShardDelegation,
+        initializeShard,
         estimateShardUnlockCost,
         getAllDelegatedShards,
         placePixelOnER,
@@ -216,7 +236,7 @@ export function PixelCanvas() {
 
     // Session balance for transaction checks
     const { checkBalance, refreshBalance } = useSessionBalance();
-    
+
     // Initial fetch of delegated shards pixels
     const fetchedRef = useRef(false);
 
@@ -229,16 +249,19 @@ export function PixelCanvas() {
                 const res = await fetch('/api/feed');
                 if (res.ok) {
                     const { pixels, shards } = await res.json();
-                    
+
                     // Update Pixels
                     if (pixels && pixels.length > 0) {
-                        const mappedPixels = pixels.map((p: any) => ({
-                            px: p.px,
-                            py: p.py,
-                            color: p.color,
-                            timestamp: p.timestamp
-                        }));
-                        bulkUpdateMarkers(mappedPixels);
+                        const mappedPixels = pixels.map((p: any) => {
+                            const colorHex = p.color > 0 ? PRESET_COLORS[p.color - 1] : null;
+                            return {
+                                px: p.px,
+                                py: p.py,
+                                color: colorHex ? hexToUint32(colorHex) : 0,
+                                timestamp: p.timestamp
+                            };
+                        });
+                        bulkUpdateMarkers(mappedPixels.reverse());
                     }
 
                     // Update Recent Shards List and Unlocked State
@@ -253,7 +276,7 @@ export function PixelCanvas() {
                             [...mapped, ...prev].forEach(s => map.set(`${s.x},${s.y}`, s));
                             return Array.from(map.values()).sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 50);
                         });
-                        
+
                         setUnlockedShards(prev => {
                             const next = new Set(prev);
                             shards.forEach((s: any) => next.add(`${s.shard_x},${s.shard_y}`));
@@ -267,31 +290,31 @@ export function PixelCanvas() {
         };
         fetchFeed();
     }, [isMapReady, bulkUpdateMarkers]);
-    
+
     useEffect(() => {
         if (fetchedRef.current || isReadonly) return;
-        
+
         const fetchPixels = async () => {
             // Prevent multiple fetches
             fetchedRef.current = true;
-            
+
             console.log("Fetching all delegated shards from ER...");
             const shards = await getAllDelegatedShards();
             console.log(`Found ${shards.length} delegated shards`);
-            
+
             const allPixels: PixelData[] = [];
             const newUnlockedShards = new Set<string>();
-            
+
             for (const shard of shards) {
                 // Mark as unlocked
                 newUnlockedShards.add(`${shard.shardX},${shard.shardY}`);
-                
+
                 // Unpack pixels
                 const pixels = shard.pixels;
                 for (let i = 0; i < pixels.length; i++) {
                     const byte = pixels[i];
-                    if (byte === undefined || byte === 0) continue; 
-                    
+                    if (byte === undefined || byte === 0) continue;
+
                     // Low nibble (ODD index pixel)
                     const p1 = byte & 0x0F;
                     if (p1 !== 0) {
@@ -300,7 +323,7 @@ export function PixelCanvas() {
                             const localIndex = 2 * i + 1; // Odd
                             const localY = Math.floor(localIndex / SHARD_DIMENSION);
                             const localX = localIndex % SHARD_DIMENSION;
-                            
+
                             allPixels.push({
                                 px: shard.shardX * SHARD_DIMENSION + localX,
                                 py: shard.shardY * SHARD_DIMENSION + localY,
@@ -309,7 +332,7 @@ export function PixelCanvas() {
                             });
                         }
                     }
-                    
+
                     // High nibble (EVEN index pixel)
                     const p2 = (byte >> 4) & 0x0F;
                     if (p2 !== 0) {
@@ -318,8 +341,8 @@ export function PixelCanvas() {
                             const localIndex = 2 * i; // Even
                             const localY = Math.floor(localIndex / SHARD_DIMENSION);
                             const localX = localIndex % SHARD_DIMENSION;
-                            
-                             allPixels.push({
+
+                            allPixels.push({
                                 px: shard.shardX * SHARD_DIMENSION + localX,
                                 py: shard.shardY * SHARD_DIMENSION + localY,
                                 color: hexToUint32(colorHex),
@@ -329,7 +352,7 @@ export function PixelCanvas() {
                     }
                 }
             }
-            
+
             // Update unlocked shards state
             if (newUnlockedShards.size > 0) {
                 setUnlockedShards(prev => {
@@ -348,14 +371,14 @@ export function PixelCanvas() {
                 });
                 */
             }
-            
+
             // Bulk update map
             if (allPixels.length > 0) {
                 console.log(`Loading ${allPixels.length} pixels to map`);
                 bulkUpdateMarkers(allPixels);
             }
         };
-        
+
         fetchPixels();
     }, [getAllDelegatedShards, bulkUpdateMarkers, isReadonly]);
 
@@ -401,7 +424,7 @@ export function PixelCanvas() {
 
             // Process results
             const delegatedShards = results.filter(r => r.status === 'delegated');
-            
+
             if (delegatedShards.length > 0) {
                 setUnlockedShards(prev => {
                     const newSet = new Set(prev);
@@ -480,15 +503,15 @@ export function PixelCanvas() {
             } else {
                 // Find color index (1-based) for contract
                 const colorIndex = PRESET_COLORS.indexOf(selectedColor as any) + 1;
-                
+
                 if (colorIndex <= 0) {
-                     throw new Error("Invalid color selected");
+                    throw new Error("Invalid color selected");
                 }
-                
+
                 await placePixelOnER(px, py, colorIndex);
-                updateMarker(px, py, color); 
+                updateMarker(px, py, color);
             }
-            
+
             // Play pop sound
             playPop();
         } catch (e) {
@@ -502,7 +525,7 @@ export function PixelCanvas() {
     // Handle shard unlock
     const handleUnlockShard = useCallback(async (shardX: number, shardY: number) => {
         const shardKey = `${shardX},${shardY}`;
-        
+
         // Disable if already unlocking
         if (unlockingShard) return;
 
@@ -511,7 +534,7 @@ export function PixelCanvas() {
         try {
             // Get accurate cost estimate based on current shard state
             const costEstimate = await estimateShardUnlockCost(shardX, shardY);
-            
+
             // If shard is already fully unlocked (delegated), nothing to do
             if (costEstimate.total === 0) {
                 console.log(`Shard (${shardX}, ${shardY}) is already unlocked`);
@@ -523,10 +546,10 @@ export function PixelCanvas() {
                 setUnlockingShard(null);
                 return;
             }
-            
+
             // Check session balance first with accurate cost
             const hasBalance = await checkBalance(
-                costEstimate.total, 
+                costEstimate.total,
                 `Unlock shard (${shardX}, ${shardY}) - ${costEstimate.needsInit ? 'Init + ' : ''}Delegate`
             );
             if (!hasBalance) {
@@ -534,7 +557,7 @@ export function PixelCanvas() {
                 setUnlockingShard(null);
                 return;
             }
- 
+
             // Play pop sound as feedback
             playPop();
 
@@ -543,20 +566,20 @@ export function PixelCanvas() {
             await initializeShard(shardX, shardY, (status) => {
                 setUnlockingShard(prev => prev ? { ...prev, status } : null);
             });
-            
+
             setUnlockingShard(prev => prev ? { ...prev, status: "Done!" } : null);
             await new Promise(r => setTimeout(r, 500)); // Show done briefly
-            
+
             // Refresh balance after transaction
             refreshBalance();
-            
+
             // Add to unlocked set
             setUnlockedShards(prev => {
                 const newSet = new Set(prev);
                 newSet.add(shardKey);
                 return newSet;
             });
-            
+
             // Add to recent unlocked list
             setRecentUnlockedShards(prev => {
                 const newShard = { x: shardX, y: shardY, timestamp: Date.now() };
@@ -564,7 +587,7 @@ export function PixelCanvas() {
                 const filtered = prev.filter(s => !(s.x === shardX && s.y === shardY));
                 return [newShard, ...filtered].slice(0, 50); // Keep max 50
             });
-            
+
         } catch (err) {
             console.error("Failed to unlock shard:", err);
             // Show more informative error
@@ -578,15 +601,15 @@ export function PixelCanvas() {
     // Zoom to show a locked shard
     const zoomToLockedShard = useCallback((px: number, py: number) => {
         if (!mapRef.current) return;
-        
+
         const shardX = Math.floor(px / SHARD_DIMENSION);
         const shardY = Math.floor(py / SHARD_DIMENSION);
-        
+
         // Calculate center of the shard
         const centerPx = (shardX + 0.5) * SHARD_DIMENSION;
         const centerPy = (shardY + 0.5) * SHARD_DIMENSION;
         const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
-        
+
         // Check if already at approximately zoom 13
         const currentZoomLevel = mapRef.current.getZoom();
         if (Math.abs(currentZoomLevel - 13) < 0.5) {
@@ -604,13 +627,13 @@ export function PixelCanvas() {
     // Place pixel at selected location
     const handlePlacePixel = useCallback(() => {
         if (!selectedPixel) return;
-        
+
         // Check if shard is locked
         if (isShardLocked(selectedPixel.px, selectedPixel.py)) {
             zoomToLockedShard(selectedPixel.px, selectedPixel.py);
             return;
         }
-        
+
         handlePlacePixelAt(selectedPixel.px, selectedPixel.py);
     }, [selectedPixel, handlePlacePixelAt, isShardLocked, zoomToLockedShard]);
 
@@ -644,7 +667,7 @@ export function PixelCanvas() {
             const pyNum = Number(py);
             // newColor is palette index u8
             const colorIndex = Number(color);
-            
+
             if (colorIndex <= 0 || colorIndex > PRESET_COLORS.length) {
                 removeMarker(`${pxNum},${pyNum}`);
             } else {
@@ -655,30 +678,30 @@ export function PixelCanvas() {
                 }
             }
         }, [updateMarker, removeMarker]),
-        
+
         useCallback((event: any) => {
             const { shardX, shardY } = event;
             const x = Number(shardX);
             const y = Number(shardY);
             const shardKey = `${x},${y}`;
-            
+
             // Add to unlocked set
             setUnlockedShards(prev => {
                 const newSet = new Set(prev);
                 newSet.add(shardKey);
                 return newSet;
             });
-            
+
             // Add to recent list
-             setRecentUnlockedShards(prev => {
+            setRecentUnlockedShards(prev => {
                 const newShard = { x, y, timestamp: Date.now() }; // Use local time for sorting/display
                 // Remove if already exists, add to front
                 const filtered = prev.filter(s => !(s.x === x && s.y === y));
                 return [newShard, ...filtered].slice(0, 50);
             });
-            
+
             // Optional: Provide visual feedback?
-             console.log(`Live update: Shard (${x}, ${y}) initialized!`);
+            console.log(`Live update: Shard (${x}, ${y}) initialized!`);
         }, [])
     );
 
@@ -749,8 +772,8 @@ export function PixelCanvas() {
                     onMouseMove={(lat, lng) => handleMapHover(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor)}
                     onMouseOut={handleMapHoverOut}
                 />
-                <ShardGridOverlay 
-                    visible={showShardGrid} 
+                <ShardGridOverlay
+                    visible={showShardGrid}
                     onAggregatedChange={setShardsAggregated}
                     onVisibleShardsChange={setVisibleShards}
                     alertShard={isReadonly ? null : lockedShardAlert}
@@ -766,10 +789,10 @@ export function PixelCanvas() {
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
                     <div className="bg-blue-500/95 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="11" cy="11" r="8"/>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                            <line x1="11" y1="8" x2="11" y2="14"/>
-                            <line x1="8" y1="11" x2="14" y2="11"/>
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            <line x1="11" y1="8" x2="11" y2="14" />
+                            <line x1="8" y1="11" x2="14" y2="11" />
                         </svg>
                         <span>Zoom in to see individual shards</span>
                     </div>
@@ -804,7 +827,7 @@ export function PixelCanvas() {
                             // Pick from pixels outside view, or any pixel if all are visible
                             const targetPixels = pixelsOutsideView.length > 0 ? pixelsOutsideView : localPixels;
                             const randomPixel = targetPixels[Math.floor(Math.random() * targetPixels.length)];
-                            if(!randomPixel) return;
+                            if (!randomPixel) return;
                             focusOnPixel(randomPixel.px, randomPixel.py);
                         } else if (localPixels.length === 0) {
                             alert('No pixels placed yet. Be the first to place a pixel!');
@@ -817,11 +840,10 @@ export function PixelCanvas() {
                 </button>
                 <button
                     onClick={() => setShowShardGrid(!showShardGrid)}
-                    className={`w-8 h-8 rounded-lg shadow-lg flex items-center justify-center transition-colors ${
-                        showShardGrid 
-                            ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                    className={`w-8 h-8 rounded-lg shadow-lg flex items-center justify-center transition-colors ${showShardGrid
+                            ? 'bg-blue-500 text-white hover:bg-blue-600'
                             : 'bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
+                        }`}
                     title="Toggle shard grid"
                 >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -925,8 +947,8 @@ export function PixelCanvas() {
                             <div className="p-3 border-b border-slate-200 font-semibold text-slate-700 flex items-center justify-between shrink-0">
                                 <span className="flex items-center gap-2">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                                        <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                                        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
                                     </svg>
                                     Unlocked Shards
                                 </span>
@@ -949,7 +971,7 @@ export function PixelCanvas() {
                                                     const centerPy = (shard.y + 0.5) * SHARD_DIMENSION;
                                                     const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
                                                     mapRef.current?.setView([lat, lon], 13, { animate: true });
-                                                    
+
                                                     // Trigger highlight animation after map settles
                                                     setTimeout(() => {
                                                         setHighlightShard({ x: shard.x, y: shard.y });
@@ -960,8 +982,8 @@ export function PixelCanvas() {
                                             >
                                                 <div className="w-8 h-8 rounded-lg shadow-inner border border-emerald-200 bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                                                        <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                                                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                                                        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
                                                     </svg>
                                                 </div>
                                                 <div className="flex-1">
@@ -971,7 +993,7 @@ export function PixelCanvas() {
                                                 </div>
                                                 <div className="text-emerald-500">
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <polyline points="9 18 15 12 9 6"/>
+                                                        <polyline points="9 18 15 12 9 6" />
                                                     </svg>
                                                 </div>
                                             </div>
@@ -1006,9 +1028,9 @@ export function PixelCanvas() {
                                         </span>
                                     )}
                                 </div>
-                                <div className='grow'/>
+                                <div className='grow' />
                                 <Button variant={"ghost"} size={"icon"} className={cn("", selectedColor === TRANSPARENT_COLOR && "bg-slate-100")} onClick={() => setSelectedColor(TRANSPARENT_COLOR)}>
-                                    <Eraser/>
+                                    <Eraser />
                                 </Button>
                             </div>
 
@@ -1028,10 +1050,10 @@ export function PixelCanvas() {
                         {isToolbarExpanded && !isReadonly && (
                             <div className="p-4">
                                 {/* Two rows of 16 colors each */}
-                                <div className="grid grid-cols-16 gap-1.5 mb-4">
+                                <div className="grid grid-cols-15 gap-1.5">
                                     {
                                         PRESET_COLORS.map((color) => {
-                                            return <Color key={color} color={color} selected={selectedColor === color} onClick={() => setSelectedColor(color)}/>
+                                            return <Color key={color} color={color} selected={selectedColor === color} onClick={() => setSelectedColor(color)} />
                                         })
                                     }
                                 </div>
@@ -1044,15 +1066,15 @@ export function PixelCanvas() {
                                 <div className="text-center py-2 text-slate-500 text-sm">
                                     <span className="inline-flex items-center gap-2">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                                            <circle cx="12" cy="12" r="3"/>
+                                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                                            <circle cx="12" cy="12" r="3" />
                                         </svg>
                                         View-only mode — connect wallet to paint
                                     </span>
                                 </div>
                             ) : (
                                 <>
-                                    <button
+                                    {/* <button
                                         onClick={handlePlacePixel}
                                         disabled={!selectedPixel}
                                         className="w-full relative overflow-hidden bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-semibold py-3 px-6 rounded-xl transition-all disabled:cursor-not-allowed shadow-lg hover:shadow-xl active:scale-[0.99]"
@@ -1063,10 +1085,10 @@ export function PixelCanvas() {
                                                 {!selectedPixel ? 'Select a pixel' : 'Paint'}
                                             </span>
                                         </div>
-                                    </button>
+                                    </button> */}
 
                                     {/* Help text */}
-                                    <div className="mt-2 text-center text-xs text-slate-400">
+                                    <div className=" text-center text-xs text-slate-400">
                                         {currentZoom >= PIXEL_SELECT_ZOOM ? (
                                             <span className="text-emerald-500">Click to paint instantly!</span>
                                         ) : (
