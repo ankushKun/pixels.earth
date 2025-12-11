@@ -16,6 +16,7 @@
         "@solana/wallet-adapter-react": "^0.15.39",
         "@solana/wallet-adapter-react-ui": "^0.9.39",
         "@solana/wallet-adapter-wallets": "^0.19.37",
+        "@solana/web3.js": "^1.98.4",
         "@types/leaflet": "^1.9.21",
         "buffer": "^6.0.3",
         "bun-plugin-tailwind": "^0.1.2",
