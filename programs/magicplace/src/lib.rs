@@ -11,7 +11,9 @@ use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::commit_accounts;
 
-declare_id!("CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE");
+declare_id!("CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi");
+
+const DELEGATION_PROGRAM_ID: Pubkey = pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 
 // ========================================
 // Canvas Configuration - 2^18 x 2^18 with dynamic sharding
@@ -37,6 +39,12 @@ const SHARD_SEED: &[u8] = b"shard";
 
 /// Available colors using 4-bit packing (0 = unset/transparent, 1-15 = palette colors)
 const AVAILABLE_COLORS: u8 = 15;
+
+/// Max pixels allowed in a burst for non-owners
+const COOLDOWN_LIMIT: u8 = 100;
+
+/// Cooldown period in seconds resetting the burst counter
+const COOLDOWN_PERIOD: u64 = 30;
 
 #[ephemeral]
 #[program]
@@ -94,7 +102,6 @@ pub mod magicplace {
         let user = &mut ctx.accounts.user;
         user.main_address = main_wallet;
         user.authority = ctx.accounts.authority.key();
-        user.owned_shards = 0;
         user.cooldown_counter = 0;
         user.last_place_timestamp = 0;
         user.bump = ctx.bumps.user;
@@ -118,7 +125,7 @@ pub mod magicplace {
         // Delegate the session account to Ephemeral Rollups
         ctx.accounts.delegate_pda(
             &ctx.accounts.authority,
-            &[b"session", main_wallet.as_ref()],
+            &[b"session", ctx.accounts.authority.key().as_ref()],
             DelegateConfig {
                 validator: ctx.remaining_accounts.first().map(|acc| acc.key()),
                 ..Default::default()
@@ -147,19 +154,34 @@ pub mod magicplace {
             PixelError::InvalidShardCoord
         );
         
-        // Initialize the shard data
+        // Handle session account (potentially delegated)
+        let session_info = &ctx.accounts.session;
+        require!(
+            session_info.owner == &crate::ID || session_info.owner == &DELEGATION_PROGRAM_ID,
+            PixelError::InvalidAuth
+        );
+        
+        let session = SessionAccount::try_deserialize(&mut &session_info.data.borrow()[..])?;
+        
         let shard = &mut ctx.accounts.shard;
         shard.shard_x = shard_x;
         shard.shard_y = shard_y;
-        // Packed storage: 2 pixels per byte (4-bit colors)
         shard.pixels = vec![0u8; BYTES_PER_SHARD];
-        shard.creator = ctx.accounts.authority.key();
+        shard.creator = session.main_address;
         shard.bump = ctx.bumps.shard;
         
         msg!(
             "Shard ({}, {}) initialized with {} pixels ({} bytes packed)", 
             shard_x, shard_y, PIXELS_PER_SHARD, BYTES_PER_SHARD
         );
+        
+        emit!(ShardInitialized {
+            shard_x,
+            shard_y,
+            creator: shard.creator,
+            main_wallet: session.main_address,
+            timestamp: Clock::get()?.unix_timestamp as u64,
+        });
         Ok(())
     }
 
@@ -212,6 +234,24 @@ pub mod magicplace {
             shard.shard_x == expected_shard_x && shard.shard_y == expected_shard_y,
             PixelError::ShardMismatch
         );
+
+        let session = &mut ctx.accounts.session;
+
+        if shard.creator != session.main_address {
+             let clock = Clock::get()?;
+             let now = clock.unix_timestamp as u64;
+
+             if now.saturating_sub(session.last_place_timestamp) >= COOLDOWN_PERIOD {
+                 session.cooldown_counter = 0;
+             }
+
+             if session.cooldown_counter >= COOLDOWN_LIMIT {
+                 return err!(PixelError::Cooldown);
+             }
+
+             session.cooldown_counter = session.cooldown_counter.checked_add(1).unwrap();
+             session.last_place_timestamp = now;
+        }
         
         // Calculate local pixel position within the shard
         let local_x = px % SHARD_DIMENSION;
@@ -245,6 +285,7 @@ pub mod magicplace {
             py,
             color,
             painter: ctx.accounts.signer.key(),
+            main_wallet: session.main_address,
             timestamp: Clock::get()?.unix_timestamp as u64,
         });
 
@@ -286,11 +327,14 @@ pub mod magicplace {
         
         msg!("Pixel ({}, {}) erased", px, py);
 
+        // Context is PlacePixel, which includes session
+        let session = &mut ctx.accounts.session;
         emit!(PixelChanged {
             px,
             py,
             color: 0, // 0 = erased/transparent
             painter: ctx.accounts.signer.key(),
+            main_wallet: session.main_address,
             timestamp: Clock::get()?.unix_timestamp as u64,
         });
 
@@ -335,7 +379,7 @@ pub struct InitializeUser<'info> {
         init,
         payer = authority,
         space = 8 + SessionAccount::INIT_SPACE,
-        seeds = [b"session", main_wallet.as_ref()],
+        seeds = [b"session", authority.key().as_ref()],
         bump
     )]
     pub user: Account<'info, SessionAccount>,
@@ -352,21 +396,19 @@ pub struct InitializeUser<'info> {
 /// This should be called after initialize_user in a separate transaction
 #[delegate]
 #[derive(Accounts)]
-#[instruction(main_wallet: Pubkey)]
 pub struct DelegateUser<'info> {
     /// The session account to delegate
     #[account(
         mut,
-        seeds = [b"session", main_wallet.as_ref()],
+        seeds = [b"session", authority.key().as_ref()],
         bump = user.bump,
-        constraint = user.main_address == main_wallet @ PixelError::InvalidAuth
     )]
     pub user: Account<'info, SessionAccount>,
     /// The session key authority
     #[account(mut)]
     pub authority: Signer<'info>,
     /// CHECK: The PDA to delegate - same as user, used for delegation CPI
-    #[account(mut, del, seeds = [b"session", main_wallet.as_ref()], bump)]
+    #[account(mut, del, seeds = [b"session", authority.key().as_ref()], bump)]
     pub pda: AccountInfo<'info>,
 }
 
@@ -387,7 +429,13 @@ pub struct InitializeShard<'info> {
     )]
     pub shard: Account<'info, PixelShard>,
 
-    /// The authority paying for initialization
+    /// CHECK: The session account, could be delegated. Verified by seeds and custom owner check.
+    #[account(
+        seeds = [b"session", authority.key().as_ref()],
+        bump,
+    )]
+    pub session: UncheckedAccount<'info>,
+
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -418,6 +466,13 @@ pub struct PlacePixel<'info> {
         bump = shard.bump
     )]
     pub shard: Account<'info, PixelShard>,
+
+    #[account(
+        mut,
+        seeds = [b"session", signer.key().as_ref()],
+        bump = session.bump,
+    )]
+    pub session: Account<'info, SessionAccount>,
 
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -487,7 +542,6 @@ pub struct PixelShard {
 pub struct SessionAccount {
     pub main_address: Pubkey,
     pub authority: Pubkey,
-    pub owned_shards: u64,
     pub cooldown_counter: u8,
     pub last_place_timestamp: u64,
     pub bump: u8,
@@ -509,6 +563,8 @@ pub enum PixelError {
     InvalidColor,
     #[msg("Invalid authentication")]
     InvalidAuth,
+    #[msg("Cooldown active: limit reached")]
+    Cooldown,
 }
 
 // ========================================
@@ -521,5 +577,15 @@ pub struct PixelChanged {
     pub py: u32,
     pub color: u8,
     pub painter: Pubkey,
+    pub main_wallet: Pubkey,
+    pub timestamp: u64,
+}
+
+#[event]
+pub struct ShardInitialized {
+    pub shard_x: u16,
+    pub shard_y: u16,
+    pub creator: Pubkey,
+    pub main_wallet: Pubkey,
     pub timestamp: u64,
 }

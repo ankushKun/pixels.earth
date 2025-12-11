@@ -108,7 +108,7 @@ export default function OnboardingWalkthrough({ onComplete }: Props) {
           // Check if already fully set up
           try {
             const balance = await connection.getBalance(keypair.publicKey);
-            const status = await checkUserDelegation(wallet.publicKey!);
+            const status = await checkUserDelegation(keypair.publicKey);
             
             if (balance >= 0.005 * LAMPORTS_PER_SOL && status === "delegated") {
               // Already done - animate through steps for visual feedback
@@ -153,7 +153,7 @@ export default function OnboardingWalkthrough({ onComplete }: Props) {
             const balance = await connection.getBalance(keypair.publicKey);
             needsFunding = balance < 0.005 * LAMPORTS_PER_SOL;
 
-            const status = await checkUserDelegation(owner);
+            const status = await checkUserDelegation(keypair.publicKey);
             if (status === "delegated") {
               needsInit = false;
               needsDelegate = false;

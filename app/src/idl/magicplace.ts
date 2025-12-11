@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/magicplace.json`.
  */
 export type Magicplace = {
-  "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE",
+  "address": "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi",
   "metadata": {
     "name": "magicplace",
     "version": "0.1.0",
@@ -130,38 +130,38 @@ export type Magicplace = {
             "program": {
               "kind": "const",
               "value": [
-                167,
-                183,
-                223,
-                207,
-                199,
-                14,
-                206,
-                3,
-                154,
-                170,
-                74,
-                197,
+                176,
+                231,
+                55,
+                69,
+                33,
+                111,
                 117,
-                125,
-                32,
-                89,
-                54,
-                49,
-                88,
-                141,
-                30,
-                85,
-                95,
-                170,
-                252,
-                208,
-                96,
-                129,
-                53,
-                227,
-                237,
-                67
+                214,
+                75,
+                159,
+                172,
+                43,
+                103,
+                184,
+                47,
+                150,
+                24,
+                225,
+                223,
+                191,
+                168,
+                255,
+                209,
+                211,
+                99,
+                220,
+                123,
+                7,
+                42,
+                100,
+                172,
+                105
               ]
             }
           }
@@ -265,7 +265,7 @@ export type Magicplace = {
         },
         {
           "name": "ownerProgram",
-          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
+          "address": "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi"
         },
         {
           "name": "delegationProgram",
@@ -325,8 +325,8 @@ export type Magicplace = {
                 ]
               },
               {
-                "kind": "arg",
-                "path": "mainWallet"
+                "kind": "account",
+                "path": "authority"
               }
             ]
           }
@@ -363,38 +363,38 @@ export type Magicplace = {
             "program": {
               "kind": "const",
               "value": [
-                167,
-                183,
-                223,
-                207,
-                199,
-                14,
-                206,
-                3,
-                154,
-                170,
-                74,
-                197,
+                176,
+                231,
+                55,
+                69,
+                33,
+                111,
                 117,
-                125,
-                32,
-                89,
-                54,
-                49,
-                88,
-                141,
-                30,
-                85,
-                95,
-                170,
-                252,
-                208,
-                96,
-                129,
-                53,
-                227,
-                237,
-                67
+                214,
+                75,
+                159,
+                172,
+                43,
+                103,
+                184,
+                47,
+                150,
+                24,
+                225,
+                223,
+                191,
+                168,
+                255,
+                209,
+                211,
+                99,
+                220,
+                123,
+                7,
+                42,
+                100,
+                172,
+                105
               ]
             }
           }
@@ -488,15 +488,15 @@ export type Magicplace = {
                 ]
               },
               {
-                "kind": "arg",
-                "path": "mainWallet"
+                "kind": "account",
+                "path": "authority"
               }
             ]
           }
         },
         {
           "name": "ownerProgram",
-          "address": "CHhht9A6W95JYGm3AA1yH34n112uexmrpKqoSwKwfmxE"
+          "address": "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi"
         },
         {
           "name": "delegationProgram",
@@ -552,6 +552,30 @@ export type Magicplace = {
               {
                 "kind": "arg",
                 "path": "shardY"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "signer"
               }
             ]
           }
@@ -630,10 +654,30 @@ export type Magicplace = {
           }
         },
         {
+          "name": "session",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
           "name": "authority",
-          "docs": [
-            "The authority paying for initialization"
-          ],
           "writable": true,
           "signer": true
         },
@@ -688,8 +732,8 @@ export type Magicplace = {
                 ]
               },
               {
-                "kind": "arg",
-                "path": "mainWallet"
+                "kind": "account",
+                "path": "authority"
               }
             ]
           }
@@ -767,6 +811,30 @@ export type Magicplace = {
               {
                 "kind": "arg",
                 "path": "shardY"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "signer"
               }
             ]
           }
@@ -879,6 +947,19 @@ export type Magicplace = {
         1,
         84
       ]
+    },
+    {
+      "name": "shardInitialized",
+      "discriminator": [
+        183,
+        80,
+        70,
+        77,
+        210,
+        226,
+        161,
+        150
+      ]
     }
   ],
   "errors": [
@@ -906,6 +987,11 @@ export type Magicplace = {
       "code": 6004,
       "name": "invalidAuth",
       "msg": "Invalid authentication"
+    },
+    {
+      "code": 6005,
+      "name": "cooldown",
+      "msg": "Cooldown active: limit reached"
     }
   ],
   "types": [
@@ -928,6 +1014,10 @@ export type Magicplace = {
           },
           {
             "name": "painter",
+            "type": "pubkey"
+          },
+          {
+            "name": "mainWallet",
             "type": "pubkey"
           },
           {
@@ -1003,10 +1093,6 @@ export type Magicplace = {
             "type": "pubkey"
           },
           {
-            "name": "ownedShards",
-            "type": "u64"
-          },
-          {
             "name": "cooldownCounter",
             "type": "u8"
           },
@@ -1017,6 +1103,34 @@ export type Magicplace = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "shardInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "shardX",
+            "type": "u16"
+          },
+          {
+            "name": "shardY",
+            "type": "u16"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "mainWallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "u64"
           }
         ]
       }

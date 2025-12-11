@@ -23,6 +23,7 @@ import { Eraser, Grid2X2Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePopSound } from '../hooks/use-pop-sound';
 import { useMagicplaceProgram } from '../hooks/use-magicplace-program';
+import { useMagicplaceEvents } from '../hooks/use-magicplace-events';
 import { useReadonlyMode } from './start-using';
 import { useSessionBalance } from './session-balance-provider';
 
@@ -599,6 +600,52 @@ export function PixelCanvas() {
         handleMapClick(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
     }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard]);
 
+    // Real-time Event Handling
+    useMagicplaceEvents(
+        useCallback((event: any) => {
+            const { px, py, color } = event;
+            const pxNum = Number(px);
+            const pyNum = Number(py);
+            // newColor is palette index u8
+            const colorIndex = Number(color);
+            
+            if (colorIndex <= 0 || colorIndex > PRESET_COLORS.length) {
+                removeMarker(`${pxNum},${pyNum}`);
+            } else {
+                const colorHex = PRESET_COLORS[colorIndex - 1]; // 1-based index
+                if (colorHex) {
+                    const colorUint32 = hexToUint32(colorHex);
+                    updateMarker(pxNum, pyNum, colorUint32);
+                }
+            }
+        }, [updateMarker, removeMarker]),
+        
+        useCallback((event: any) => {
+            const { shardX, shardY } = event;
+            const x = Number(shardX);
+            const y = Number(shardY);
+            const shardKey = `${x},${y}`;
+            
+            // Add to unlocked set
+            setUnlockedShards(prev => {
+                const newSet = new Set(prev);
+                newSet.add(shardKey);
+                return newSet;
+            });
+            
+            // Add to recent list
+             setRecentUnlockedShards(prev => {
+                const newShard = { x, y, timestamp: Date.now() }; // Use local time for sorting/display
+                // Remove if already exists, add to front
+                const filtered = prev.filter(s => !(s.x === x && s.y === y));
+                return [newShard, ...filtered].slice(0, 50);
+            });
+            
+            // Optional: Provide visual feedback?
+             console.log(`Live update: Shard (${x}, ${y}) initialized!`);
+        }, [])
+    );
+
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -827,7 +874,10 @@ export function PixelCanvas() {
                                                         {isTransparent && <span className="text-slate-400 ml-1 text-xs">(erased)</span>}
                                                     </div>
                                                     <div className="text-xs text-slate-400">
-                                                        Local pixel
+                                                        {(() => {
+                                                            const timeAgo = Math.floor(Date.now() / 1000 - pixel.timestamp);
+                                                            return timeAgo < 60 ? `${timeAgo}s ago` : `${Math.floor(timeAgo / 60)}m ago`;
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>

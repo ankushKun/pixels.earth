@@ -6,6 +6,7 @@ import { type Magicplace } from "../idl/magicplace";
 import IDL from "../idl/magicplace.json";
 import { SHARD_DIMENSION, SHARDS_PER_DIM } from "../constants";
 import { useSessionKey } from "./use-session-key";
+import { BN } from "@coral-xyz/anchor"; // Ensure BN is available
 
 // Note: @magicblock-labs/ephemeral-rollups-sdk is imported dynamically to avoid
 // Buffer not defined errors during module initialization
@@ -18,6 +19,18 @@ export interface PixelShardAccount {
     creator: PublicKey;
     bump: number;
 }
+
+export interface SessionAccount {
+    mainAddress: PublicKey;
+    authority: PublicKey;
+    cooldownCounter: number;
+    lastPlaceTimestamp: BN;
+    bump: number;
+}
+
+// Cooldown Constants
+export const COOLDOWN_LIMIT = 100;
+export const COOLDOWN_PERIOD = 30; // seconds
 
 // Ephemeral Rollup endpoints - configurable via environment
 const ER_ENDPOINT = "https://devnet.magicblock.app";
@@ -72,11 +85,11 @@ export function getShardForPixel(px: number, py: number): { shardX: number; shar
 }
 
 /**
- * Derive the PDA for a session account based on the main wallet
+ * Derive the PDA for a session account based on the session key (authority)
  */
-export function deriveSessionPDA(mainWallet: PublicKey): PublicKey {
+export function deriveSessionPDA(sessionKey: PublicKey): PublicKey {
     const [pda] = PublicKey.findProgramAddressSync(
-        [SESSION_SEED, mainWallet.toBuffer()],
+        [SESSION_SEED, sessionKey.toBuffer()],
         new PublicKey(IDL.address)
     );
     return pda;
@@ -114,7 +127,27 @@ export function useMagicplaceProgram() {
         setProvider(provider);
 
         return new Program<Magicplace>(IDL as Magicplace, provider);
+
     }, [connection, wallet.publicKey, wallet.signTransaction, wallet.signAllTransactions]);
+
+    // Read-only Base Layer provider (for fetching without wallet)
+    const readOnlyProvider = useMemo(() => {
+        const dummyWallet = {
+            publicKey: PublicKey.default,
+            signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T) => tx,
+            signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]) => txs,
+        };
+        
+        return new AnchorProvider(
+            connection,
+            dummyWallet,
+            { commitment: "confirmed" }
+        );
+    }, [connection]);
+
+    const readOnlyProgram = useMemo(() => {
+        return new Program<Magicplace>(IDL as Magicplace, readOnlyProvider);
+    }, [readOnlyProvider]);
 
     // Session-based program for base layer (uses session keypair for signing)
     const sessionProgram = useMemo(() => {
@@ -240,6 +273,100 @@ export function useMagicplaceProgram() {
     }, [readOnlyErProvider]);
 
     // ========================================
+    // Session State
+    // ========================================
+
+    const fetchSessionAccount = useCallback(async (sessionKeyPubkey: PublicKey): Promise<SessionAccount | null> => {
+       if (!program && !readOnlyErProgram) return null;
+       
+       const sessionPDA = deriveSessionPDA(sessionKeyPubkey);
+       
+       // Try ER first (fast path)
+       if (erProgram || readOnlyErProgram) {
+           try {
+               const target = erProgram || readOnlyErProgram;
+               const account = await target!.account.sessionAccount.fetch(sessionPDA);
+               return account as SessionAccount;
+           } catch (e) {
+               // Not on ER
+           }
+       }
+       
+       // Try Base Layer
+       if (program) {
+            try {
+                const account = await program.account.sessionAccount.fetch(sessionPDA);
+                return account as SessionAccount;
+            } catch (e) {
+                return null;
+            }
+       }
+
+       return null;
+    }, [program, erProgram, readOnlyErProgram]);
+
+    /**
+     * Check if user can place a pixel on a specific shard based on cooldown rules.
+     * Returns { allowed: boolean, reason?: string, remaining?: number, refreshIn?: number }
+     */
+    const checkCanPlacePixel = useCallback(async (shardCreator: PublicKey, mainWallet: PublicKey): Promise<{ allowed: boolean, reason?: string, remaining?: number, refreshIn?: number }> => {
+        // 1. If user owns the shard, no cooldown
+        if (shardCreator.equals(mainWallet)) {
+            return { allowed: true };
+        }
+
+        // 2. Fetch session account to check limits
+        // We need the active session key
+        if (!sessionKey.keypair) {
+             // If no session key, maybe we are using main wallet directly?
+             // But if using main wallet directly, our "session key" IS the main wallet (signer).
+             // Let's assume passed signer is what initiates the action.
+             // But here we don't have the signer passed as arg.
+             // Assume we use the active session key from valid hook if exists, else main wallet?
+             // But wait, the hook uses `sessionKey.keypair` if active.
+             return { allowed: true, remaining: COOLDOWN_LIMIT }; // Fallback
+        }
+
+        const session = await fetchSessionAccount(sessionKey.keypair.publicKey);
+        if (!session) {
+            // No session account means fresh state (all zeros), allowed to start
+            return { allowed: true, remaining: COOLDOWN_LIMIT };
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const lastPlace = session.lastPlaceTimestamp.toNumber();
+        const timeDiff = now - lastPlace;
+
+        // Logic from contract:
+        // if now.saturating_sub(session.last_place_timestamp) >= COOLDOWN_PERIOD {
+        //      session.cooldown_counter = 0;
+        // }
+        let currentCounter = session.cooldownCounter;
+        if (timeDiff >= COOLDOWN_PERIOD) {
+            currentCounter = 0;
+        }
+
+        // if session.cooldown_counter >= COOLDOWN_LIMIT { return err!(PixelError::Cooldown); }
+        if (currentCounter >= COOLDOWN_LIMIT) {
+             const waitTime = COOLDOWN_PERIOD - timeDiff; // This might be weird if timeDiff > COOLDOWN_PERIOD, but in that case counter is 0.
+             // Wait, if counter >= LIMIT, it means timeDiff < COOLDOWN_PERIOD necessarily (unless logic error).
+             // Actually, if timeDiff >= COOLDOWN_PERIOD, counter resets to 0, so it won't be >= LIMIT.
+             // So here timeDiff < COOLDOWN_PERIOD.
+             return { 
+                 allowed: false, 
+                 reason: `Cooldown active. limit reached.`, 
+                 refreshIn: Math.max(0, COOLDOWN_PERIOD - timeDiff) 
+             };
+        }
+
+        return { 
+            allowed: true, 
+            remaining: COOLDOWN_LIMIT - currentCounter 
+        };
+
+    }, [fetchSessionAccount]);
+
+    // ========================================
     // Shard Query Functions
     // ========================================
 
@@ -296,7 +423,7 @@ export function useMagicplaceProgram() {
             const baseAccountInfo = await connection.getAccountInfo(shardPDA, "confirmed");
             
             if (!baseAccountInfo) {
-                console.log(`Shard (${shardX}, ${shardY}) not found on base layer - needs initialization`);
+                // console.log(`Shard (${shardX}, ${shardY}) not found on base layer - needs initialization`);
                 return "not-initialized";
             }
 
@@ -427,7 +554,8 @@ export function useMagicplaceProgram() {
                 .initializeUser(mainWallet, Array.from(authSignature) as number[])
                 .accounts({
                     authority: sessionKeypair.publicKey,
-                    // instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+                    // @ts-ignore
+                    instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
                 })
                 .instruction();
                 
@@ -489,10 +617,12 @@ export function useMagicplaceProgram() {
             });
 
             // Build the delegation transaction
+            // Note: delegateUser(mainWallet) still takes mainWallet arg, but PDA is derived from signer
             const tx = await program.methods
-                .delegateUser(mainWallet)
+                .delegateUser(mainWallet) 
                 .accounts({
                     authority: sessionKeypair.publicKey,
+                    // user is auto-derived from authority
                 })
                 .preInstructions([priorityFeeIx])
                 .transaction();
@@ -524,22 +654,21 @@ export function useMagicplaceProgram() {
     /**
      * Check if a user session account is delegated to Ephemeral Rollups
      */
-    const checkUserDelegation = useCallback(async (mainWallet: PublicKey): Promise<DelegationStatus> => {
-        const sessionPDA = deriveSessionPDA(mainWallet);
+    const checkUserDelegation = useCallback(async (sessionKeyPubkey: PublicKey): Promise<DelegationStatus> => {
+        const sessionPDA = deriveSessionPDA(sessionKeyPubkey);
         
         try {
             const accountInfo = await connection.getAccountInfo(sessionPDA);
             
             if (!accountInfo) {
-                throw new Error("Account not found"); // Explicitly throw so checking logic knows it's not initialized
+                // If account doesn't exist, it's not delegated (or not initialized which is fine here)
+                 return "not-initialized"; 
             }
 
             // Check if the account owner is the delegation program
             return accountInfo.owner.equals(DELEGATION_PROGRAM_ID) ? "delegated" : "undelegated";
         } catch (err) {
-            // Rethrow or handle specific errors as needed.
-            // For now, if getAccountInfo failed or we threw "Account not found", bubble up.
-            throw err;
+            return "undelegated";
         }
     }, [connection]);
 
@@ -566,10 +695,13 @@ export function useMagicplaceProgram() {
         setError(null);
 
         try {
+            // For "send from wallet", the wallet.publicKey IS the signer (authority)
+            // So the session account is derived from wallet.publicKey
             const tx = await program.methods
                 .placePixel(shardX, shardY, px, py, color)
                 .accounts({
                     signer: wallet.publicKey,
+                    // session PDA auto-derived from signer
                 })
                 .rpc();
 
@@ -601,6 +733,7 @@ export function useMagicplaceProgram() {
                 .erasePixel(shardX, shardY, px, py)
                 .accounts({
                     signer: wallet.publicKey,
+                    // session PDA auto-derived from signer
                 })
                 .rpc();
 
@@ -638,10 +771,14 @@ export function useMagicplaceProgram() {
 
         try {
             // Build instruction using session program for IDL
+            // We need the session PDA, which corresponds to the MAIN wallet.
+            // If the user is on ER w/ session logic, we assume `wallet.publicKey` is the main wallet.
+            // If wallet is not connected, we cannot easily derive the session PDA unless we stored it.
             const placeIx = await sessionProgram.methods
                 .placePixel(shardX, shardY, px, py, color)
                 .accounts({
                     signer: sessionKey.keypair.publicKey,
+                    // session -> auto-derived from signer (session key)
                 })
                 .instruction();
 
@@ -688,6 +825,7 @@ export function useMagicplaceProgram() {
                 .erasePixel(shardX, shardY, px, py)
                 .accounts({
                     signer: sessionKey.keypair.publicKey,
+                    // session -> auto-derived from signer
                 })
                 .instruction();
 
@@ -926,6 +1064,7 @@ export function useMagicplaceProgram() {
                     .initializeShard(shardX, shardY)
                     .accounts({
                         authority: sessionKey.keypair.publicKey,
+                        // session -> auto-derived from authority (session key)
                     })
                     .instruction();
 
@@ -1136,7 +1275,9 @@ export function useMagicplaceProgram() {
     return {
         // Program instances
         program,
+        readOnlyProgram,
         erProgram,
+        readOnlyErProgram,
         erConnection,
         sessionActive, // Whether session key is available for signing
 
@@ -1161,6 +1302,8 @@ export function useMagicplaceProgram() {
         delegateUser,
         checkUserDelegation, // Exporting this function
         deriveSessionPDA,
+        fetchSessionAccount,
+        checkCanPlacePixel,
 
         // Pixel operations (base layer)
         placePixel,

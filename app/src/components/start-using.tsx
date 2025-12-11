@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useSessionKey } from "@/hooks/use-session-key";
+import { useMagicplaceProgram } from "@/hooks/use-magicplace-program";
 import OnboardingWalkthrough from "./onboarding-walkthrough";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
@@ -187,7 +188,8 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
  */
 export default function StartUsing({ children }: { children: React.ReactNode }) {
   const { connected, connecting } = useWallet();
-  const { isActive } = useSessionKey();
+  const { isActive, publicKey: sessionPublicKey, revokeSession } = useSessionKey();
+  const { fetchSessionAccount, program } = useMagicplaceProgram();
   
   // State management
   const [showWelcome, setShowWelcome] = useState(false);
@@ -213,6 +215,23 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
       setShowOnboarding(true);
     }
   }, [connected, isActive, initialized]);
+
+  // Verify session on-chain existence
+  useEffect(() => {
+    const validateSession = async () => {
+        if (connected && isActive && sessionPublicKey && program) {
+            // Check if session exists on chain
+             // No need for timeout if we check program existence
+            const session = await fetchSessionAccount(sessionPublicKey);
+            if (!session) {
+                console.log("Session key exists locally but not on-chain. Revoking to force re-initialization.");
+                revokeSession();
+            }
+        }
+    };
+    
+    validateSession();
+  }, [connected, isActive, sessionPublicKey, fetchSessionAccount, revokeSession, program]);
 
   // Handle connect from welcome
   const handleConnect = () => {
