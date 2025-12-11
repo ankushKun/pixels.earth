@@ -82,7 +82,7 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
                     <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 text-4xl shadow-inner text-emerald-500">
                       <PenTool/>
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900 mb-2">Wallet Connected!</h1>
+                    <h1 className="text-2xl font-bold text-slate-900 mb-2">Welcome to Magicplace!</h1>
                     <p className="text-slate-500 text-sm leading-relaxed mb-8 max-w-[20rem]">
                         You're all set to start creating on the infinite canvas.
                     </p>
@@ -237,13 +237,7 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
     if (!initialized) return;
 
     if (connected) {
-        // When connected, hide welcome and show onboarding if needed
-        setShowWelcome(false);
-        if (!isActive) {
-             // Delay showing onboarding slightly for a nice sequenced transition if dragging from Welcome
-             const t = setTimeout(() => setShowOnboarding(true), 150);
-             return () => clearTimeout(t);
-        }
+        // Just ensure we are not in readonly mode if connected
         setIsReadonly(false);
     } else {
         // If disconnected, ensure onboarding is hidden
@@ -278,6 +272,10 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
         setIsReadonly(true);
     } else {
         setIsReadonly(false);
+        // If connected but no session, start onboarding now
+        if (!isActive) {
+            setTimeout(() => setShowOnboarding(true), 300);
+        }
     }
   };
 
@@ -296,7 +294,7 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
       {children}
       
       {/* Welcome popup */}
-      <Transition show={showWelcome && !connected}>
+      <Transition show={showWelcome}>
         <WelcomePopup onConnect={handleConnect} onBrowse={handleBrowse} />
       </Transition>
 

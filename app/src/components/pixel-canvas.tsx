@@ -20,7 +20,7 @@ import {
 } from '../constants';
 import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
-import { Brush, Eraser, Grid2X2Plus } from 'lucide-react';
+import { Brush, Eraser, Grid2X2Plus, Unlock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGameSounds } from '../hooks/use-game-sounds';
 import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
@@ -31,6 +31,7 @@ import { useSessionBalance } from './session-balance-provider';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useSessionKey } from '../hooks/use-session-key';
 import { CooldownTimer } from './cooldown-timer';
+import { Avatar, AvatarFallback } from './ui/avatar';
 
 // Icons as inline SVGs
 const PaintBrushIcon = () => (
@@ -225,7 +226,7 @@ export function PixelCanvas() {
     const [unlockingShard, setUnlockingShard] = useState<{ x: number; y: number; status: string } | null>(null);
     const [shardMetadata, setShardMetadata] = useState<Map<string, { creator: string, pixelCount: number }>>(new Map());
     const [cooldownState, setCooldownState] = useState<{ placed: number, lastTimestamp: number }>({ placed: 0, lastTimestamp: 0 });
-    
+
     const { sessionKey } = useSessionKey();
 
     // Magicplace program hook for checking shard delegation status
@@ -252,8 +253,8 @@ export function PixelCanvas() {
                     lastTimestamp: acc.lastPlaceTimestamp.toNumber()
                 });
             } else {
-                 // New session or fetch failed
-                 setCooldownState({ placed: 0, lastTimestamp: 0 });
+                // New session or fetch failed
+                setCooldownState({ placed: 0, lastTimestamp: 0 });
             }
         };
 
@@ -269,8 +270,8 @@ export function PixelCanvas() {
             // Only show toast if the limit was reached extremely recently (< 2s)
             // This prevents spam on page refresh if we are mid-cooldown
             if (now - cooldownState.lastTimestamp < 2) {
-                 toast.error("Limit reached! Wait 30 seconds.");
-                 playFail();
+                toast.error("Limit reached! Wait 30 seconds.");
+                playFail();
             }
         }
     }, [cooldownState]);
@@ -578,13 +579,13 @@ export function PixelCanvas() {
     const handlePlacePixelAt = useCallback(async (px: number, py: number) => {
         // Check Cooldown
         if (cooldownState.placed >= COOLDOWN_LIMIT) {
-             const now = Math.floor(Date.now() / 1000);
-             const elapsed = now - cooldownState.lastTimestamp;
-             if (elapsed < COOLDOWN_PERIOD) {
-                 playFail();
-                 toast.error(`Burst limit reached! Wait ${COOLDOWN_PERIOD - elapsed}s`);
-                 return;
-             }
+            const now = Math.floor(Date.now() / 1000);
+            const elapsed = now - cooldownState.lastTimestamp;
+            if (elapsed < COOLDOWN_PERIOD) {
+                playFail();
+                toast.error(`Burst limit reached! Wait ${COOLDOWN_PERIOD - elapsed}s`);
+                return;
+            }
         }
 
         const shardX = Math.floor(px / SHARD_DIMENSION);
@@ -623,24 +624,24 @@ export function PixelCanvas() {
                 }
 
                 await placePixelOnER(px, py, colorIndex);
-                
+
                 // Optimistic Cooldown Update
                 setCooldownState(prev => {
                     const now = Math.floor(Date.now() / 1000);
                     let { placed, lastTimestamp } = prev;
-                    
+
                     if (placed >= COOLDOWN_LIMIT) {
                         if (now - lastTimestamp >= COOLDOWN_PERIOD) {
                             placed = 0;
                         }
                     }
-                    
+
                     placed += 1;
-                    
+
                     if (placed >= COOLDOWN_LIMIT) {
                         lastTimestamp = now;
                     }
-                    
+
                     return { placed, lastTimestamp };
                 });
                 // Sync with chain
@@ -702,13 +703,15 @@ export function PixelCanvas() {
             // Check session balance first with accurate cost
             const hasBalance = await checkBalance(
                 costEstimate.total,
-                `Unlock shard (${shardX}, ${shardY})`
+                `Unlock shard (${shardX}, ${shardY})`,
+                () => handleUnlockShard(shardX, shardY) // Retry callback
             );
+
             if (!hasBalance) {
                 // Popup will be shown by the provider
                 playFail();
                 toast.dismiss(toastId);
-                setUnlockingShard(null);
+                setUnlockingShard(null); // Reset so retry can start fresh
                 return;
             }
 
@@ -1034,7 +1037,7 @@ export function PixelCanvas() {
 
             <div className='absolute top-8 left-16 flex flex-col gap-2 z-40'>
                 {!isReadonly && (
-                    <CooldownTimer 
+                    <CooldownTimer
                         pixelsPlaced={cooldownState.placed}
                         maxPixels={COOLDOWN_LIMIT}
                         lastPlaceTimestamp={cooldownState.lastTimestamp}
@@ -1046,6 +1049,21 @@ export function PixelCanvas() {
             {/* Top Right - Info */}
             <div className="absolute top-4 right-4 flex items-center gap-3 z-40">
 
+                {/* show currently live users here */}
+                <div className="flex flex-row flex-wrap items-center gap-12">
+                    <div className="*:data-[slot=avatar]:ring-background flex -space-x-2.5 hover:space-x-1.5 *:transition-all *:duration-300 *:ease-in-out *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale">
+                        <Avatar className='cursor-pointer'>
+                            <AvatarFallback>A</AvatarFallback>
+                        </Avatar>
+                        <Avatar className='cursor-pointer'>
+                            <AvatarFallback>B</AvatarFallback>
+                        </Avatar>
+                        <Avatar className='cursor-pointer'>
+                            <AvatarFallback>C</AvatarFallback>
+                        </Avatar>
+                    </div>
+                </div>
+
                 {/* Shards Count - Toggle for Recent Shard unlocks */}
                 <button
                     onClick={() => setShowRecentShards(!showRecentShards)}
@@ -1055,7 +1073,7 @@ export function PixelCanvas() {
                         }`}
                     title="Toggle recent shards"
                 >
-                    <Grid2X2Plus className="w-4.5 h-4.5" />
+                    <Unlock className="w-4 h-4" />
                     <span>{unlockedShards.size.toLocaleString()}</span>
                 </button>
                 {/* Pixels Count - Toggle for Recent Pixels */}

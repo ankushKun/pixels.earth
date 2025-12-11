@@ -11,12 +11,13 @@ import { toast } from 'sonner';
 interface TopupRequest {
   amountNeeded: number; // in SOL
   reason: string;
+  onSuccess?: () => void;
 }
 
 interface SessionBalanceContextType {
   balance: number | null;
   refreshBalance: () => Promise<void>;
-  checkBalance: (amountNeeded: number, reason?: string) => Promise<boolean>;
+  checkBalance: (amountNeeded: number, reason?: string, onSuccess?: () => void) => Promise<boolean>;
   requestTopup: (amountNeeded: number, reason?: string) => void;
   topup: (amount: number) => Promise<void>;
 }
@@ -204,7 +205,7 @@ export function SessionBalanceProvider({ children }: { children: ReactNode }) {
   }, [refreshBalance]);
 
   // Check if balance is sufficient
-  const checkBalance = useCallback(async (amountNeeded: number, reason?: string): Promise<boolean> => {
+  const checkBalance = useCallback(async (amountNeeded: number, reason?: string, onSuccess?: () => void): Promise<boolean> => {
     // Fetch fresh balance directly instead of relying on state
     let currentBalance = balance;
     if (sessionKey.publicKey) {
@@ -221,6 +222,7 @@ export function SessionBalanceProvider({ children }: { children: ReactNode }) {
       setTopupRequest({
         amountNeeded,
         reason: reason || `Need ${amountNeeded.toFixed(4)} SOL for this action`,
+        onSuccess,
       });
       return false;
     }
@@ -274,6 +276,11 @@ export function SessionBalanceProvider({ children }: { children: ReactNode }) {
 
       // Refresh balance after topup
       await refreshBalance();
+
+      // Trigger onSuccess callback if present
+      if (topupRequest?.onSuccess) {
+        topupRequest.onSuccess();
+      }
     } catch (e) {
       console.error('Top-up failed:', e);
       toast.error("Top-up failed: " + (e instanceof Error ? e.message : String(e)), { id: toastId });
