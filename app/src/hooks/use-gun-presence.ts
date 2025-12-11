@@ -5,7 +5,8 @@ import { useWallet } from '@solana/wallet-adapter-react';
 const Gun = require('gun');
 
 const PEERS = [
-    "http://localhost:8765/gun"
+    "http://localhost:8765/gun",
+    "https://arweave.tech/gun"
 ];
 
 // Constants

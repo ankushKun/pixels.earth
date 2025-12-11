@@ -339,7 +339,7 @@ export function PixelCanvas() {
 
         const fetchFeed = async () => {
             try {
-                const res = await fetch('/api/feed');
+                const res = await fetch(process.env.NODE_ENV=="production" ? "https://arweave.tech/api/magicplace/feed" : '/api/feed');
                 if (res.ok) {
                     const { pixels, shards } = await res.json();
 
@@ -1384,7 +1384,7 @@ export function PixelCanvas() {
             </div>
 
             {/* Debug Panel - only visible in development */}
-            {import.meta.env.DEV && (
+            {process.env.NODE_ENV !== "production" && (
                 <div className="absolute bottom-4 left-4 z-50 bg-black/80 text-white text-xs font-mono px-3 py-2 rounded-lg max-h-48 overflow-y-auto">
                     <div>Zoom: {currentZoom.toFixed(1)}</div>
                     {showShardGrid && (
