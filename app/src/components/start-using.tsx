@@ -24,11 +24,12 @@ export function useReadonlyMode() {
 // ============================================================================
 
 const PixelIcon = () => (
-  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="7" height="7" x="3" y="3" rx="1"/>
-    <rect width="7" height="7" x="14" y="3" rx="1"/>
-    <rect width="7" height="7" x="14" y="14" rx="1"/>
-    <rect width="7" height="7" x="3" y="14" rx="1"/>
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-900">
+    <rect width="18" height="18" x="3" y="3" rx="2" strokeWidth="1.5"/>
+    <path d="M3 9h18"/>
+    <path d="M9 21V9"/>
+    <path d="M3 15h6"/>
+    <path d="M15 9v12"/>
   </svg>
 );
 
@@ -50,17 +51,13 @@ const WalletIcon = () => (
 // Welcome Popup Component
 // ============================================================================
 
-// ============================================================================
-// Welcome Popup Component
-// ============================================================================
-
 interface WelcomePopupProps {
   onConnect: () => void;
   onBrowse: () => void;
 }
 
 function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
-  const { select, wallets, connect, connecting, connected } = useWallet();
+  const { select, wallets, connecting, connected } = useWallet();
   const [showWalletList, setShowWalletList] = useState(false);
 
   const handleConnectClick = () => {
@@ -73,128 +70,103 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-8 text-center">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/20 flex items-center justify-center">
-            <PixelIcon />
-          </div>
-          <h1 className="text-2xl font-bold text-white">
-            Welcome to Magicplace
-          </h1>
-          <p className="text-blue-100 mt-2 text-sm">
-            The collaborative pixel canvas on Solana
-          </p>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          {connected ? (
-             <div className="space-y-4">
-                <div className="text-center space-y-2 mb-6">
-                    <div className="text-emerald-500 font-medium flex items-center justify-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/>
-                        Wallet Connected
-                    </div>
-                    <p className="text-slate-600">
-                        Ready to place some pixels?
+    <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-sans">
+      <div className="bg-white rounded-[2.5rem] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.2)] max-w-[24rem] w-full overflow-hidden border border-zinc-100 p-8 transform transition-all">
+        
+        {/* Header Content */}
+        {!showWalletList && (
+           <div className="flex flex-col items-center text-center">
+            {connected ? (
+                 <>
+                    {/* <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 text-4xl shadow-inner text-emerald-500 animate-[bounce_1s_infinite]">
+                        ✨
+                    </div> */}
+                    <h1 className="text-2xl font-bold text-slate-900 mb-2">Wallet Connected!</h1>
+                    <p className="text-slate-500 text-sm leading-relaxed mb-8 max-w-[20rem]">
+                        You're all set to start creating on the infinite canvas.
                     </p>
-                </div>
-                
-                <button
-                    onClick={onBrowse}
-                    className="w-full py-3 px-6 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-                >
-                    Continue to Game
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14"/>
-                        <path d="m12 5 7 7-7 7"/>
-                    </svg>
-                </button>
-             </div>
-          ) : !showWalletList ? (
-            <>
-              <div className="space-y-3 mb-6">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
-                    🎨
-                  </div>
-                  <div>
-                    <div className="font-medium text-slate-700">Create pixel art together</div>
-                    <div className="text-sm text-slate-500">Collaborate with others on a shared canvas</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
-                    ⛓️
-                  </div>
-                  <div>
-                    <div className="font-medium text-slate-700">Stored on-chain forever</div>
-                    <div className="text-sm text-slate-500">Every pixel is permanently saved on Solana</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 flex-shrink-0">
-                    ⚡
-                  </div>
-                  <div>
-                    <div className="font-medium text-slate-700">Fast & affordable</div>
-                    <div className="text-sm text-slate-500">Powered by Ephemeral Rollups for instant updates</div>
-                  </div>
-                </div>
-              </div>
+                    <button
+                        onClick={onBrowse}
+                        className="w-full py-4 bg-slate-900 hover:bg-black text-white font-bold rounded-full shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.23)] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        Enter Magicplace
+                    </button>
+                 </>
+            ) : (
+                <>
+                    <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 shadow-sm relative group">
+                        <div className="absolute inset-0 rounded-full border border-indigo-100 animate-ping opacity-20 duration-[3s]"></div>
+                        <PixelIcon />
+                    </div>
+                    
+                    <h1 className="text-[1.75rem] font-extrabold text-slate-900 mb-2 tracking-tight">
+                        Magicplace
+                    </h1>
+                    <p className="text-slate-500 text-[0.95rem] leading-relaxed mb-8 font-medium">
+                        Collaborate on an infinite pixel canvas. <br/>
+                        Built on Solana & Magicblock.
+                    </p>
 
-              <button
-                onClick={handleConnectClick}
-                className="w-full py-3 px-6 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 mb-3"
-              >
-                <WalletIcon />
-                Connect Wallet
-              </button>
+                    <div className="w-full space-y-3">
+                        <button
+                            onClick={handleConnectClick}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-full shadow-[0_4px_14px_0_rgba(99,102,241,0.39)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.23)] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            <WalletIcon />
+                            Connect Wallet
+                        </button>
 
-              <button
-                onClick={onBrowse}
-                className="w-full py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all flex items-center justify-center gap-2"
-              >
-                <EyeIcon />
-                I'll just look around
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="text-slate-600 text-center mb-4">
-                Select a wallet to connect
-              </p>
-              <div className="space-y-2 mb-4">
-                {installedWallets.map((wallet) => (
-                  <button
-                    key={wallet.adapter.name}
-                    onClick={() => {
-                      select(wallet.adapter.name);
-                      onConnect();
-                    }}
-                    disabled={connecting}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all"
-                  >
-                    <img 
-                      src={wallet.adapter.icon} 
-                      alt={wallet.adapter.name} 
-                      className="w-8 h-8 rounded-lg"
-                    />
-                    <span className="font-medium text-slate-700">{wallet.adapter.name}</span>
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => setShowWalletList(false)}
-                className="w-full text-slate-500 hover:text-slate-700 text-sm py-2"
-              >
-                ← Back
-              </button>
-            </>
-          )}
-        </div>
+                        <button
+                            onClick={onBrowse}
+                            className="w-full py-4 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold rounded-full transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            <EyeIcon />
+                            Just Looking
+                        </button>
+                    </div>
+                </>
+            )}
+           </div>
+        )}
+
+        {/* Wallet List View */}
+        {showWalletList && (
+            <div className="flex flex-col h-full animate-in slide-in-from-right-8 fade-in duration-300">
+                <div className="flex items-center justify-between mb-6">
+                    <button 
+                        onClick={() => setShowWalletList(false)}
+                        className="p-2 -ml-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-50 transition-colors"
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M15 18l-6-6 6-6"/>
+                        </svg>
+                    </button>
+                    <h2 className="text-lg font-bold text-slate-900">Select Wallet</h2>
+                    <div className="w-8" /> {/* Spacer for centering */}
+                </div>
+
+                <div className="space-y-3">
+                    {installedWallets.map((wallet) => (
+                    <button
+                        key={wallet.adapter.name}
+                        onClick={() => {
+                            select(wallet.adapter.name);
+                            onConnect();
+                        }}
+                        disabled={connecting}
+                        className="w-full flex items-center gap-4 p-4 rounded-3xl border-2 border-slate-50 bg-white hover:border-indigo-100 hover:bg-indigo-50/30 transition-all group active:scale-[0.98]"
+                    >
+                        <img 
+                            src={wallet.adapter.icon} 
+                            alt={wallet.adapter.name} 
+                            className="w-10 h-10 rounded-xl shadow-sm group-hover:scale-110 transition-transform"
+                        />
+                        <span className="font-bold text-slate-700 group-hover:text-indigo-900 text-lg">{wallet.adapter.name}</span>
+                    </button>
+                    ))}
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );
