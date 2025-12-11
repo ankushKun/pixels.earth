@@ -189,6 +189,7 @@ export function PixelCanvas() {
     const [isToolbarExpanded, setIsToolbarExpanded] = useState(true);
     const [currentZoom, setCurrentZoom] = useState(DEFAULT_MAP_ZOOM);
     const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
+    const [isMapReady, setIsMapReady] = useState(false);
     const [showShardGrid, setShowShardGrid] = useState(false);
     const [shardsAggregated, setShardsAggregated] = useState(false);
     const [visibleShards, setVisibleShards] = useState<{ x: number; y: number }[]>([]);
@@ -218,6 +219,54 @@ export function PixelCanvas() {
     
     // Initial fetch of delegated shards pixels
     const fetchedRef = useRef(false);
+
+    // Fetch recent feed (shards + pixels) from backend
+    useEffect(() => {
+        if (!isMapReady) return;
+
+        const fetchFeed = async () => {
+            try {
+                const res = await fetch('/api/feed');
+                if (res.ok) {
+                    const { pixels, shards } = await res.json();
+                    
+                    // Update Pixels
+                    if (pixels && pixels.length > 0) {
+                        const mappedPixels = pixels.map((p: any) => ({
+                            px: p.px,
+                            py: p.py,
+                            color: p.color,
+                            timestamp: p.timestamp
+                        }));
+                        bulkUpdateMarkers(mappedPixels);
+                    }
+
+                    // Update Recent Shards List and Unlocked State
+                    if (shards && shards.length > 0) {
+                        setRecentUnlockedShards(prev => {
+                            const mapped = shards.map((s: any) => ({
+                                x: s.shard_x,
+                                y: s.shard_y,
+                                timestamp: s.timestamp
+                            }));
+                            const map = new Map();
+                            [...mapped, ...prev].forEach(s => map.set(`${s.x},${s.y}`, s));
+                            return Array.from(map.values()).sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 50);
+                        });
+                        
+                        setUnlockedShards(prev => {
+                            const next = new Set(prev);
+                            shards.forEach((s: any) => next.add(`${s.shard_x},${s.shard_y}`));
+                            return next;
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch feed", e);
+            }
+        };
+        fetchFeed();
+    }, [isMapReady, bulkUpdateMarkers]);
     
     useEffect(() => {
         if (fetchedRef.current || isReadonly) return;
@@ -238,12 +287,6 @@ export function PixelCanvas() {
                 newUnlockedShards.add(`${shard.shardX},${shard.shardY}`);
                 
                 // Unpack pixels
-                // We iterate through the shard dimension (128x128)
-                // This might be heavy, but it's done once on load
-                // Optimization: only check non-zero bytes in buffer? 
-                // But getPixelFromShard handles logic nicely.
-                
-                // Let's iterate bytes directly for performance
                 const pixels = shard.pixels;
                 for (let i = 0; i < pixels.length; i++) {
                     const byte = pixels[i];
@@ -262,7 +305,7 @@ export function PixelCanvas() {
                                 px: shard.shardX * SHARD_DIMENSION + localX,
                                 py: shard.shardY * SHARD_DIMENSION + localY,
                                 color: hexToUint32(colorHex),
-                                timestamp: Date.now() / 1000
+                                timestamp: 0
                             });
                         }
                     }
@@ -280,14 +323,13 @@ export function PixelCanvas() {
                                 px: shard.shardX * SHARD_DIMENSION + localX,
                                 py: shard.shardY * SHARD_DIMENSION + localY,
                                 color: hexToUint32(colorHex),
-                                timestamp: Date.now() / 1000
+                                timestamp: 0
                             });
                         }
                     }
                 }
             }
             
-            // Update unlocked shards state
             // Update unlocked shards state
             if (newUnlockedShards.size > 0) {
                 setUnlockedShards(prev => {
@@ -296,21 +338,15 @@ export function PixelCanvas() {
                     return next;
                 });
 
+                /* 
+                // Don't populate "Recent Shards" with historical state (which lacks timestamps).
+                // "Recent Shards" should only come from Backend Feed or Live Events.
+                
                 // Also populate the list for the UI panel
                 setRecentUnlockedShards(prev => {
-                    const newShards = shards.map(s => ({ 
-                        x: s.shardX, 
-                        y: s.shardY, 
-                        timestamp: Date.now() // We treat them as discovered now
-                    }));
-                    
-                    // Filter out any that might somehow already be locally known (unlikely on init)
-                    const uniqueNewShards = newShards.filter(ns => 
-                        !prev.some(p => p.x === ns.x && p.y === ns.y)
-                    );
-                    
-                    return [...uniqueNewShards, ...prev].slice(0, 50);
+                     // ... 
                 });
+                */
             }
             
             // Bulk update map
@@ -697,6 +733,7 @@ export function PixelCanvas() {
                     onMapReady={(map) => {
                         initializeMap(map);
                         setCurrentZoom(map.getZoom());
+                        setIsMapReady(true);
                     }}
                     onMoveEnd={() => {
                         throttledAction();

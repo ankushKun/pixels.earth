@@ -24,6 +24,12 @@ const server = serve({
         return Response.json(pixels);
     },
 
+    "/api/feed": () => {
+        const pixels = db.prepare('SELECT * FROM pixel_events ORDER BY timestamp DESC LIMIT 15').all();
+        const shards = db.prepare('SELECT * FROM shards ORDER BY timestamp DESC LIMIT 15').all();
+        return Response.json({ pixels, shards });
+    },
+
     "/api/user": (req) => {
         const url = new URL(req.url);
         const address = url.searchParams.get("address");

@@ -380,7 +380,14 @@ export function useMap() {
         // Merge into localPixels, respecting max size and uniqueness
         setLocalPixels(prev => {
             const newMap = new Map(prev.map(p => [`${p.px},${p.py}`, p]));
-            pixels.forEach(p => newMap.set(`${p.px},${p.py}`, p));
+            
+            pixels.forEach(p => {
+                // Only add to recent list if it has a valid timestamp
+                if (p.timestamp > 0) {
+                    newMap.set(`${p.px},${p.py}`, p);
+                }
+            });
+
             return Array.from(newMap.values())
                 .sort((a, b) => b.timestamp - a.timestamp)
                 .slice(0, 50);
