@@ -1052,7 +1052,7 @@ export function useMagicplaceProgram() {
                     throw new Error("Session program not initialized");
                 }
                 
-                onStatusUpdate?.("Initializing...");
+                onStatusUpdate?.("Unlocking Shard...");
                 console.log(`Initializing shard (${shardX}, ${shardY})...`);
                 const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
                     microLamports: PRIORITY_FEE_MICRO_LAMPORTS,
@@ -1106,7 +1106,7 @@ export function useMagicplaceProgram() {
                 
                 // Wait for the account state to settle before delegation
                 // Devnet can have propagation delays
-                onStatusUpdate?.("Waiting for settle...");
+                onStatusUpdate?.("Confirming...");
                 console.log("Waiting for shard account to settle...");
                 await new Promise(resolve => setTimeout(resolve, 3000));
             }
@@ -1122,7 +1122,7 @@ export function useMagicplaceProgram() {
                     
                     // Wait for delegation to propagate to ER
                     console.log("Waiting for shard to appear on ER...");
-                    onStatusUpdate?.("Syncing to L2...");
+                    onStatusUpdate?.("Speeding up with Magicblock...");
 
                     // Poll for up to 20 seconds (40 attempts)
                     // This ensures the UI stays in "Unlocking" state until truly ready on ER

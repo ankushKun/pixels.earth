@@ -702,6 +702,10 @@ export function PixelCanvas() {
         handleMapClick(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
     }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard, unlockingShard]);
 
+    // Keep track of unlocking shard in a ref to use in event callbacks without re-subscribing
+    const unlockingShardRef = useRef(unlockingShard);
+    useEffect(() => { unlockingShardRef.current = unlockingShard; }, [unlockingShard]);
+
     // Real-time Event Handling
     useMagicplaceEvents(
         useCallback((event: any) => {
@@ -727,6 +731,14 @@ export function PixelCanvas() {
             const x = Number(shardX);
             const y = Number(shardY);
             const shardKey = `${x},${y}`;
+
+            // If this shard is currently being unlocked by us, ignore the event
+            // to prevent the "Unlocking..." UI from disappearing prematurely.
+            // The handleUnlockShard function will update the state when fully complete.
+            if (unlockingShardRef.current && unlockingShardRef.current.x === x && unlockingShardRef.current.y === y) {
+                console.log(`Ignoring live update for unlocking shard (${x}, ${y})`);
+                return;
+            }
 
             // Add to unlocked set
             setUnlockedShards(prev => {
