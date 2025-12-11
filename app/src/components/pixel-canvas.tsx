@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useMap, type PixelData } from '../hooks/use-map';
+import { toast } from 'sonner';
 import { hexToUint32, uint32ToHex } from '../lib/colors';
 import { latLonToGlobalPx, globalPxToLatLon } from '../lib/projection';
 import { MapContainer, TileLayer, useMapEvents } from 'react-leaflet';
@@ -21,8 +22,9 @@ import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
 import { Brush, Eraser, Grid2X2Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { usePopSound } from '../hooks/use-pop-sound';
+import { useGameSounds } from '../hooks/use-game-sounds';
 import { useMagicplaceProgram } from '../hooks/use-magicplace-program';
+
 import { useMagicplaceEvents } from '../hooks/use-magicplace-events';
 import { useReadonlyMode } from './start-using';
 import { useSessionBalance } from './session-balance-provider';
@@ -473,7 +475,7 @@ export function PixelCanvas() {
     }, [selectedColor, selectedPixel, updateSelectedHighlightColor]);
 
     // Pop sound for pixel placement
-    const { playPop } = usePopSound();
+    const { playPop, playUnlock, playFail } = useGameSounds();
 
     // Check if a pixel is in a locked shard
     const isShardLocked = useCallback((px: number, py: number): boolean => {
@@ -483,120 +485,6 @@ export function PixelCanvas() {
         // Check if this shard has been unlocked
         return !unlockedShards.has(shardKey);
     }, [unlockedShards]);
-
-    // Place pixel at coordinates
-    const handlePlacePixelAt = useCallback(async (px: number, py: number) => {
-        const isTransparent = selectedColor === TRANSPARENT_COLOR;
-        // Transparent = 0 (unset), all other colors go through hexToUint32
-        const color = isTransparent ? 0 : hexToUint32(selectedColor);
-
-        // Check if locked
-        if (isShardLocked(px, py)) {
-            alert("This shard is locked. Please unlock it first!");
-            return;
-        }
-
-        try {
-            if (isTransparent) {
-                await erasePixelOnER(px, py);
-                removeMarker(`${px},${py}`);
-            } else {
-                // Find color index (1-based) for contract
-                const colorIndex = PRESET_COLORS.indexOf(selectedColor as any) + 1;
-
-                if (colorIndex <= 0) {
-                    throw new Error("Invalid color selected");
-                }
-
-                await placePixelOnER(px, py, colorIndex);
-                updateMarker(px, py, color);
-            }
-
-            // Play pop sound
-            playPop();
-        } catch (e) {
-            console.error("Failed to place pixel:", e);
-            alert("Failed to place pixel: " + (e instanceof Error ? e.message : String(e)));
-        }
-    }, [selectedColor, updateMarker, removeMarker, playPop, isShardLocked, placePixelOnER, erasePixelOnER]);
-
-
-
-    // Handle shard unlock
-    const handleUnlockShard = useCallback(async (shardX: number, shardY: number) => {
-        const shardKey = `${shardX},${shardY}`;
-
-        // Disable if already unlocking
-        if (unlockingShard) return;
-
-        setUnlockingShard({ x: shardX, y: shardY, status: "Estimating cost..." });
-
-        try {
-            // Get accurate cost estimate based on current shard state
-            const costEstimate = await estimateShardUnlockCost(shardX, shardY);
-
-            // If shard is already fully unlocked (delegated), nothing to do
-            if (costEstimate.total === 0) {
-                console.log(`Shard (${shardX}, ${shardY}) is already unlocked`);
-                setUnlockedShards(prev => {
-                    const newSet = new Set(prev);
-                    newSet.add(shardKey);
-                    return newSet;
-                });
-                setUnlockingShard(null);
-                return;
-            }
-
-            // Check session balance first with accurate cost
-            const hasBalance = await checkBalance(
-                costEstimate.total,
-                `Unlock shard (${shardX}, ${shardY}) - ${costEstimate.needsInit ? 'Init + ' : ''}Delegate`
-            );
-            if (!hasBalance) {
-                // Popup will be shown by the provider
-                setUnlockingShard(null);
-                return;
-            }
-
-            // Play pop sound as feedback
-            playPop();
-
-            // Initialize and delegate the shard
-            setUnlockingShard(prev => prev ? { ...prev, status: "Checking status..." } : null);
-            await initializeShard(shardX, shardY, (status) => {
-                setUnlockingShard(prev => prev ? { ...prev, status } : null);
-            });
-
-            setUnlockingShard(prev => prev ? { ...prev, status: "Done!" } : null);
-            await new Promise(r => setTimeout(r, 500)); // Show done briefly
-
-            // Refresh balance after transaction
-            refreshBalance();
-
-            // Add to unlocked set
-            setUnlockedShards(prev => {
-                const newSet = new Set(prev);
-                newSet.add(shardKey);
-                return newSet;
-            });
-
-            // Add to recent unlocked list
-            setRecentUnlockedShards(prev => {
-                const newShard = { x: shardX, y: shardY, timestamp: Date.now() };
-                // Remove if already exists, add to front
-                const filtered = prev.filter(s => !(s.x === shardX && s.y === shardY));
-                return [newShard, ...filtered].slice(0, 50); // Keep max 50
-            });
-
-        } catch (err) {
-            console.error("Failed to unlock shard:", err);
-            // Show more informative error
-            const errorMessage = err instanceof Error ? err.message : "Failed to unlock shard";
-            alert(errorMessage);
-        } finally {
-            setUnlockingShard(null);
-        }
-    }, [playPop, initializeShard, estimateShardUnlockCost, checkBalance, refreshBalance, unlockingShard]);
 
     // Zoom to show a locked shard
     const zoomToLockedShard = useCallback((px: number, py: number) => {
@@ -624,25 +512,180 @@ export function PixelCanvas() {
         }
     }, [mapRef]);
 
+    // Place pixel at coordinates
+    const handlePlacePixelAt = useCallback(async (px: number, py: number) => {
+        const shardX = Math.floor(px / SHARD_DIMENSION);
+        const shardY = Math.floor(py / SHARD_DIMENSION);
+
+        // Check if this shard is currently being unlocked
+        if (unlockingShard && unlockingShard.x === shardX && unlockingShard.y === shardY) {
+            toast.info("Shard creation is in progress. Please wait...");
+            return;
+        }
+
+        const isTransparent = selectedColor === TRANSPARENT_COLOR;
+        // Transparent = 0 (unset), all other colors go through hexToUint32
+        const color = isTransparent ? 0 : hexToUint32(selectedColor);
+
+        // Check if locked
+        if (isShardLocked(px, py)) {
+            // Play fail sound
+            playFail();
+            // If checking fails or we are in a weird state, triggering zoom is fine
+            zoomToLockedShard(px, py);
+            return;
+        }
+
+        try {
+            if (isTransparent) {
+                await erasePixelOnER(px, py);
+                removeMarker(`${px},${py}`);
+                toast.success("Pixel erased", { duration: 1500 });
+            } else {
+                // Find color index (1-based) for contract
+                const colorIndex = PRESET_COLORS.indexOf(selectedColor as any) + 1;
+
+                if (colorIndex <= 0) {
+                    throw new Error("Invalid color selected");
+                }
+
+                await placePixelOnER(px, py, colorIndex);
+                updateMarker(px, py, color);
+                toast.success("Pixel placed", { duration: 1500 });
+            }
+
+            // Play pop sound
+            playPop();
+        } catch (e) {
+            playFail();
+            console.error("Failed to place pixel:", e);
+            toast.error("Failed to place pixel: " + (e instanceof Error ? e.message : String(e)));
+        }
+    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard]);
+
+
+
+    // Handle shard unlock
+    const handleUnlockShard = useCallback(async (shardX: number, shardY: number) => {
+        const shardKey = `${shardX},${shardY}`;
+
+        // Disable if already unlocking
+        if (unlockingShard) return;
+
+        // Use a toast ID to update the same toast
+        const toastId = toast.loading(`Unlocking shard (${shardX}, ${shardY})...`);
+        setUnlockingShard({ x: shardX, y: shardY, status: "processing" });
+
+        try {
+            // Get accurate cost estimate based on current shard state
+            toast.loading("Estimating cost...", { id: toastId });
+            const costEstimate = await estimateShardUnlockCost(shardX, shardY);
+
+            // If shard is already fully unlocked (delegated), nothing to do
+            if (costEstimate.total === 0) {
+                console.log(`Shard (${shardX}, ${shardY}) is already unlocked`);
+                setUnlockedShards(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(shardKey);
+                    return newSet;
+                });
+                toast.success("Shard already unlocked!", { id: toastId });
+                setUnlockingShard(null);
+                return;
+            }
+
+            // Check session balance first with accurate cost
+            const hasBalance = await checkBalance(
+                costEstimate.total,
+                `Unlock shard (${shardX}, ${shardY})`
+            );
+            if (!hasBalance) {
+                // Popup will be shown by the provider
+                playFail();
+                toast.dismiss(toastId);
+                setUnlockingShard(null);
+                return;
+            }
+
+            // Play pop sound as feedback
+            playPop();
+
+            // Initialize and delegate the shard
+            await initializeShard(shardX, shardY, (status) => {
+                toast.loading(status, { id: toastId });
+            });
+
+            // Success
+            toast.success("Shard unlocked!", { id: toastId });
+            playUnlock();
+            
+            // Refresh balance after transaction
+            refreshBalance();
+
+            // Add to unlocked set
+            setUnlockedShards(prev => {
+                const newSet = new Set(prev);
+                newSet.add(shardKey);
+                return newSet;
+            });
+
+            // Add to recent unlocked list
+            setRecentUnlockedShards(prev => {
+                const newShard = { x: shardX, y: shardY, timestamp: Date.now() };
+                const filtered = prev.filter(s => !(s.x === shardX && s.y === shardY));
+                return [newShard, ...filtered].slice(0, 50); 
+            });
+
+        } catch (err) {
+            playFail();
+            console.error("Failed to unlock shard:", err);
+            const errorMessage = err instanceof Error ? err.message : "Failed to unlock shard";
+            toast.error(errorMessage, { id: toastId });
+        } finally {
+            setUnlockingShard(null);
+        }
+    }, [playPop, playUnlock, playFail, initializeShard, estimateShardUnlockCost, checkBalance, refreshBalance, unlockingShard]);
+
+
+
     // Place pixel at selected location
     const handlePlacePixel = useCallback(() => {
         if (!selectedPixel) return;
 
         // Check if shard is locked
         if (isShardLocked(selectedPixel.px, selectedPixel.py)) {
+            // Double check if unlocking
+            const shardX = Math.floor(selectedPixel.px / SHARD_DIMENSION);
+            const shardY = Math.floor(selectedPixel.py / SHARD_DIMENSION);
+            if (unlockingShard && unlockingShard.x === shardX && unlockingShard.y === shardY) {
+                 toast.info("Shard creation is in progress. Please wait...");
+                 return;
+            }
+            
+            playFail();
             zoomToLockedShard(selectedPixel.px, selectedPixel.py);
             return;
         }
 
         handlePlacePixelAt(selectedPixel.px, selectedPixel.py);
-    }, [selectedPixel, handlePlacePixelAt, isShardLocked, zoomToLockedShard]);
+    }, [selectedPixel, handlePlacePixelAt, isShardLocked, zoomToLockedShard, unlockingShard]);
 
     // Instant place on map click when zoomed in
     const handleInstantMapClick = useCallback((lat: number, lng: number) => {
         const { px, py } = latLonToGlobalPx(lat, lng);
 
+        const shardX = Math.floor(px / SHARD_DIMENSION);
+        const shardY = Math.floor(py / SHARD_DIMENSION);
+
+        // Check if this shard is currently being unlocked
+        if (unlockingShard && unlockingShard.x === shardX && unlockingShard.y === shardY) {
+            toast.info("Shard creation is in progress. Please wait...");
+            return;
+        }
+
         // Always check if shard is locked first
         if (isShardLocked(px, py)) {
+            playFail();
             zoomToLockedShard(px, py);
             return;
         }
@@ -657,7 +700,7 @@ export function PixelCanvas() {
 
         // Update selection and zoom in if needed
         handleMapClick(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
-    }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard]);
+    }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard, unlockingShard]);
 
     // Real-time Event Handling
     useMagicplaceEvents(

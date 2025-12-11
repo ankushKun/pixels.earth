@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useSessionKey } from '@/hooks/use-session-key';
 import { LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
+import { toast } from 'sonner';
 
 // ============================================================================
 // Types
@@ -17,6 +18,7 @@ interface SessionBalanceContextType {
   refreshBalance: () => Promise<void>;
   checkBalance: (amountNeeded: number, reason?: string) => Promise<boolean>;
   requestTopup: (amountNeeded: number, reason?: string) => void;
+  topup: (amount: number) => Promise<void>;
 }
 
 // ============================================================================
@@ -28,6 +30,7 @@ const SessionBalanceContext = createContext<SessionBalanceContextType>({
   refreshBalance: async () => {},
   checkBalance: async () => true,
   requestTopup: () => {},
+  topup: async () => {},
 });
 
 export function useSessionBalance() {
@@ -86,7 +89,7 @@ function LowBalancePopup({ amountNeeded, reason, currentBalance, onTopup, onClos
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-200 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
         {/* Header */}
         <div className="bg-amber-50 p-6 text-center border-b border-amber-100">
@@ -225,30 +228,51 @@ export function SessionBalanceProvider({ children }: { children: ReactNode }) {
   // Handle topup
   const handleTopup = useCallback(async (amount: number) => {
     if (!wallet.publicKey || !wallet.signTransaction || !sessionKey.publicKey) {
+      toast.error('Wallet or session key not available');
       throw new Error('Wallet or session key not available');
     }
 
-    const tx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: wallet.publicKey,
-        toPubkey: sessionKey.publicKey,
-        lamports: Math.round(amount * LAMPORTS_PER_SOL),
-      })
-    );
+    const toastId = toast.loading(`Initiating top-up of ${amount} SOL...`);
 
-    tx.feePayer = wallet.publicKey;
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    try {
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: wallet.publicKey,
+          toPubkey: sessionKey.publicKey,
+          lamports: Math.round(amount * LAMPORTS_PER_SOL),
+        })
+      );
 
-    const signedTx = await wallet.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+      tx.feePayer = wallet.publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
-    // Refresh balance after topup
-    await refreshBalance();
-  }, [wallet, sessionKey.publicKey, connection, refreshBalance]);
+      const signedTx = await wallet.signTransaction(tx);
+      const sig = await connection.sendRawTransaction(signedTx.serialize());
+      
+      toast.loading("Confirming top-up transaction...", { id: toastId });
+      await connection.confirmTransaction(sig, 'confirmed');
+
+      // Customize success message based on pending action
+      let successMessage = `Successfully topped up ${amount} SOL!`;
+      if (topupRequest?.reason && !topupRequest.reason.startsWith("Need")) {
+          // Convert "Unlock shard..." to "You can now unlock shard..."
+          const action = topupRequest.reason.charAt(0).toLowerCase() + topupRequest.reason.slice(1);
+          successMessage = `Top-up complete! You can now ${action}.`;
+      }
+
+      toast.success(successMessage, { id: toastId });
+
+      // Refresh balance after topup
+      await refreshBalance();
+    } catch (e) {
+      console.error('Top-up failed:', e);
+      toast.error("Top-up failed: " + (e instanceof Error ? e.message : String(e)), { id: toastId });
+      throw e;
+    }
+  }, [wallet, sessionKey.publicKey, connection, refreshBalance, topupRequest]);
 
   return (
-    <SessionBalanceContext.Provider value={{ balance, refreshBalance, checkBalance, requestTopup }}>
+    <SessionBalanceContext.Provider value={{ balance, refreshBalance, checkBalance, requestTopup, topup: handleTopup }}>
       {children}
       
       {/* Low Balance Popup */}

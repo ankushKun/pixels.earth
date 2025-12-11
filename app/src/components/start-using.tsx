@@ -50,13 +50,17 @@ const WalletIcon = () => (
 // Welcome Popup Component
 // ============================================================================
 
+// ============================================================================
+// Welcome Popup Component
+// ============================================================================
+
 interface WelcomePopupProps {
   onConnect: () => void;
   onBrowse: () => void;
 }
 
 function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
-  const { select, wallets, connect, connecting } = useWallet();
+  const { select, wallets, connect, connecting, connected } = useWallet();
   const [showWalletList, setShowWalletList] = useState(false);
 
   const handleConnectClick = () => {
@@ -86,7 +90,30 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
 
         {/* Content */}
         <div className="p-6">
-          {!showWalletList ? (
+          {connected ? (
+             <div className="space-y-4">
+                <div className="text-center space-y-2 mb-6">
+                    <div className="text-emerald-500 font-medium flex items-center justify-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/>
+                        Wallet Connected
+                    </div>
+                    <p className="text-slate-600">
+                        Ready to place some pixels?
+                    </p>
+                </div>
+                
+                <button
+                    onClick={onBrowse}
+                    className="w-full py-3 px-6 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                    Continue to Game
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14"/>
+                        <path d="m12 5 7 7-7 7"/>
+                    </svg>
+                </button>
+             </div>
+          ) : !showWalletList ? (
             <>
               <div className="space-y-3 mb-6">
                 <div className="flex items-start gap-3">
@@ -179,12 +206,6 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
 
 /**
  * StartUsing - Gatekeeper component for onboarding flow
- * 
- * States:
- * 1. Not connected + first visit → Welcome popup
- * 2. Not connected + browsing → Readonly mode (no popup)
- * 3. Connected + no session → Onboarding
- * 4. Connected + session active → Full access
  */
 export default function StartUsing({ children }: { children: React.ReactNode }) {
   const { connected, connecting } = useWallet();
@@ -192,29 +213,24 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
   const { fetchSessionAccount, program } = useMagicplaceProgram();
   
   // State management
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isReadonly, setIsReadonly] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   // Check initial state on mount
   useEffect(() => {
-    if (!connected && !connecting) {
-      // Not connected - show welcome
-      setShowWelcome(true);
-    }
     setInitialized(true);
   }, []);
 
   // Handle wallet connection
   useEffect(() => {
-    if (connected && !isActive && initialized) {
+    if (connected && !isActive && initialized && !showWelcome) {
       // Just connected, need session key
-      setShowWelcome(false);
       setIsReadonly(false);
       setShowOnboarding(true);
     }
-  }, [connected, isActive, initialized]);
+  }, [connected, isActive, initialized, showWelcome]);
 
   // Verify session on-chain existence
   useEffect(() => {
@@ -239,10 +255,14 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
     // Wallet adapter will handle connection, useEffect above will trigger onboarding
   };
 
-  // Handle browse mode
+  // Handle browse mode or continue
   const handleBrowse = () => {
     setShowWelcome(false);
-    setIsReadonly(true);
+    if (!connected) {
+        setIsReadonly(true);
+    } else {
+        setIsReadonly(false);
+    }
   };
 
   // Handle onboarding complete
@@ -259,13 +279,13 @@ export default function StartUsing({ children }: { children: React.ReactNode }) 
     <ReadonlyModeContext.Provider value={{ isReadonly }}>
       {children}
       
-      {/* Welcome popup for disconnected users */}
-      {showWelcome && !connected && (
+      {/* Welcome popup for all users until dismissed */}
+      {showWelcome && (
         <WelcomePopup onConnect={handleConnect} onBrowse={handleBrowse} />
       )}
 
       {/* Onboarding for connected users without session */}
-      {showOnboarding && connected && !isActive && (
+      {showOnboarding && connected && !isActive && !showWelcome && (
         <OnboardingWalkthrough onComplete={handleOnboardingComplete} />
       )}
     </ReadonlyModeContext.Provider>

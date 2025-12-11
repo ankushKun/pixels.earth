@@ -1121,7 +1121,19 @@ export function useMagicplaceProgram() {
                     console.log("Delegated shard:", delegateTx);
                     
                     // Wait for delegation to propagate to ER
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    console.log("Waiting for shard to appear on ER...");
+                    onStatusUpdate?.("Syncing to L2...");
+
+                    // Poll for up to 20 seconds (40 attempts)
+                    // This ensures the UI stays in "Unlocking" state until truly ready on ER
+                    for (let i = 0; i < 40; i++) {
+                        const erShard = await fetchShardFromER(shardX, shardY);
+                        if (erShard) {
+                            console.log("Shard confirmed on ER");
+                            break;
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
                     
                     return delegateTx;
                 } catch (delegateErr) {

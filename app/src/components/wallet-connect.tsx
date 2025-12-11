@@ -3,8 +3,9 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import type { WalletName } from '@solana/wallet-adapter-base';
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { useConnection } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useSessionKey } from '@/hooks/use-session-key';
+import { useSessionBalance } from './session-balance-provider';
 import {
     Dialog,
     DialogContent,
@@ -103,38 +104,17 @@ interface WalletConnectProps {
 }
 
 export function WalletConnect({ onMenuOpenChange }: WalletConnectProps) {
-    const { wallets, select, disconnect, connecting, connected, publicKey, wallet, sendTransaction } = useWallet();
+    const { wallets, select, disconnect, connecting, connected, publicKey, wallet } = useWallet();
     const { connection } = useConnection();
     const { sessionKey } = useSessionKey();
+    const { balance: sessionBalance, topup } = useSessionBalance();
 
     const [isOpen, setIsOpen] = useState(false);
     const [showAccountMenu, setShowAccountMenu] = useState(false);
     const [copied, setCopied] = useState(false);
     const [copiedSession, setCopiedSession] = useState(false);
     const [isToppingUp, setIsToppingUp] = useState(false);
-    const [sessionBalance, setSessionBalance] = useState<number | null>(null);
     const [topupAmount, setTopupAmount] = useState('0.05');
-
-    // Refresh session balance
-    const refreshSessionBalance = useCallback(async () => {
-        if (!sessionKey.publicKey) {
-            setSessionBalance(null);
-            return;
-        }
-        try {
-            const balance = await connection.getBalance(sessionKey.publicKey);
-            setSessionBalance(balance / LAMPORTS_PER_SOL);
-        } catch (e) {
-            console.error("Failed to fetch session balance", e);
-        }
-    }, [connection, sessionKey.publicKey]);
-
-    // Initial and periodic balance check
-    useEffect(() => {
-        refreshSessionBalance();
-        const interval = setInterval(refreshSessionBalance, 5000);
-        return () => clearInterval(interval);
-    }, [refreshSessionBalance]);
 
     // Top up session key with custom amount
     const handleTopUpSession = useCallback(async (amount?: number) => {
@@ -148,25 +128,13 @@ export function WalletConnect({ onMenuOpenChange }: WalletConnectProps) {
 
         setIsToppingUp(true);
         try {
-            const transaction = new Transaction().add(
-                SystemProgram.transfer({
-                    fromPubkey: publicKey,
-                    toPubkey: sessionKey.publicKey,
-                    lamports: Math.round(topupSol * LAMPORTS_PER_SOL),
-                })
-            );
-
-            const signature = await sendTransaction(transaction, connection);
-            await connection.confirmTransaction(signature, "confirmed");
-            
-            // Refresh balance immediately
-            await refreshSessionBalance();
+            await topup(topupSol);
         } catch (error) {
             console.error("Top up failed:", error);
         } finally {
             setIsToppingUp(false);
         }
-    }, [sessionKey.publicKey, publicKey, connection, sendTransaction, refreshSessionBalance, topupAmount]);
+    }, [sessionKey.publicKey, publicKey, topup, topupAmount]);
 
     // Copy session key address
     const handleCopySessionAddress = useCallback(() => {
