@@ -29,7 +29,7 @@ export interface SessionAccount {
 }
 
 // Cooldown Constants
-export const COOLDOWN_LIMIT = 100;
+export const COOLDOWN_LIMIT = 50;
 export const COOLDOWN_PERIOD = 30; // seconds
 
 // Ephemeral Rollup endpoints - configurable via environment

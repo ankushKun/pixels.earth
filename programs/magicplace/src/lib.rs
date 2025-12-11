@@ -41,7 +41,7 @@ const SHARD_SEED: &[u8] = b"shard";
 const AVAILABLE_COLORS: u8 = 15;
 
 /// Max pixels allowed in a burst for non-owners
-const COOLDOWN_LIMIT: u8 = 100;
+const COOLDOWN_LIMIT: u8 = 50;
 
 /// Cooldown period in seconds resetting the burst counter
 const COOLDOWN_PERIOD: u64 = 30;
@@ -241,16 +241,19 @@ pub mod magicplace {
              let clock = Clock::get()?;
              let now = clock.unix_timestamp as u64;
 
-             if now.saturating_sub(session.last_place_timestamp) >= COOLDOWN_PERIOD {
-                 session.cooldown_counter = 0;
-             }
-
              if session.cooldown_counter >= COOLDOWN_LIMIT {
-                 return err!(PixelError::Cooldown);
+                 if now.saturating_sub(session.last_place_timestamp) >= COOLDOWN_PERIOD {
+                     session.cooldown_counter = 0;
+                 } else {
+                     return err!(PixelError::Cooldown);
+                 }
              }
 
              session.cooldown_counter = session.cooldown_counter.checked_add(1).unwrap();
-             session.last_place_timestamp = now;
+
+             if session.cooldown_counter >= COOLDOWN_LIMIT {
+                 session.last_place_timestamp = now;
+             }
         }
         
         // Calculate local pixel position within the shard

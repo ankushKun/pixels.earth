@@ -19,7 +19,7 @@ export function App() {
         // closeButton
         toastOptions={{
           style: { zIndex: 99999 },
-          duration:1000
+          duration:1100
         }}
       />
     </StartUsing>

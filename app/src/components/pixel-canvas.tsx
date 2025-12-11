@@ -23,11 +23,14 @@ import { Button } from './ui/button';
 import { Brush, Eraser, Grid2X2Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGameSounds } from '../hooks/use-game-sounds';
-import { useMagicplaceProgram } from '../hooks/use-magicplace-program';
+import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
 
 import { useMagicplaceEvents } from '../hooks/use-magicplace-events';
 import { useReadonlyMode } from './start-using';
 import { useSessionBalance } from './session-balance-provider';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useSessionKey } from '../hooks/use-session-key';
+import { CooldownTimer } from './cooldown-timer';
 
 // Icons as inline SVGs
 const PaintBrushIcon = () => (
@@ -155,12 +158,12 @@ function Color({ color, selected, onClick }: { color: string, selected: boolean,
             onClick={onClick}
             variant={"ghost"}
         >
-                <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center">
                 <Brush className={cn("w-5 h-5 bg-blend-darken transition-all duration-200",
                     selected ? "opacity-100" : "opacity-0",
-                    color=="#FFFFFF" ? "text-black" : "text-white"
+                    color == "#FFFFFF" ? "text-black" : "text-white"
                 )} />
-                </div>
+            </div>
             <span className="sr-only">Select color {color}</span>
         </Button>
     );
@@ -222,6 +225,9 @@ export function PixelCanvas() {
     const [highlightShard, setHighlightShard] = useState<{ x: number; y: number } | null>(null);
     const [unlockingShard, setUnlockingShard] = useState<{ x: number; y: number; status: string } | null>(null);
     const [shardMetadata, setShardMetadata] = useState<Map<string, { creator: string, pixelCount: number }>>(new Map());
+    const [cooldownState, setCooldownState] = useState<{ placed: number, lastTimestamp: number }>({ placed: 0, lastTimestamp: 0 });
+    
+    const { sessionKey } = useSessionKey();
 
     // Magicplace program hook for checking shard delegation status
     const {
@@ -231,8 +237,39 @@ export function PixelCanvas() {
         getAllDelegatedShards,
         placePixelOnER,
         erasePixelOnER,
-        getPixelFromShard
+        getPixelFromShard,
+        fetchSessionAccount
     } = useMagicplaceProgram();
+
+    // Poll session account for cooldowns
+    useEffect(() => {
+        if (!sessionKey?.keypair) return;
+
+        const updateCooldown = async () => {
+            const acc = await fetchSessionAccount(sessionKey.keypair!.publicKey);
+            if (acc) {
+                const now = Math.floor(Date.now() / 1000);
+                console.log("🔍 [DEBUG] Cooldown State:", {
+                    placed: acc.cooldownCounter,
+                    lastTimestamp: acc.lastPlaceTimestamp.toNumber(),
+                    now: now,
+                    windowElapsed: now - acc.lastPlaceTimestamp.toNumber()
+                });
+
+                setCooldownState({
+                    placed: acc.cooldownCounter,
+                    lastTimestamp: acc.lastPlaceTimestamp.toNumber()
+                });
+            } else {
+                 // New session or fetch failed
+                 setCooldownState({ placed: 0, lastTimestamp: 0 });
+            }
+        };
+
+        updateCooldown();
+        const interval = setInterval(updateCooldown, 1000); // Check every 1s
+        return () => clearInterval(interval);
+    }, [sessionKey, fetchSessionAccount]);
 
     // Readonly mode - hide interactions
     const { isReadonly } = useReadonlyMode();
@@ -360,7 +397,7 @@ export function PixelCanvas() {
                         }
                     }
                 }
-                
+
                 newMetadata.set(shardKey, {
                     creator: shard.creator.toBase58(),
                     pixelCount
@@ -535,6 +572,17 @@ export function PixelCanvas() {
 
     // Place pixel at coordinates
     const handlePlacePixelAt = useCallback(async (px: number, py: number) => {
+        // Check Cooldown
+        if (cooldownState.placed >= COOLDOWN_LIMIT) {
+             const now = Math.floor(Date.now() / 1000);
+             const elapsed = now - cooldownState.lastTimestamp;
+             if (elapsed < COOLDOWN_PERIOD) {
+                 playFail();
+                 toast.error(`Burst limit reached! Wait ${COOLDOWN_PERIOD - elapsed}s`);
+                 return;
+             }
+        }
+
         const shardX = Math.floor(px / SHARD_DIMENSION);
         const shardY = Math.floor(py / SHARD_DIMENSION);
 
@@ -571,6 +619,38 @@ export function PixelCanvas() {
                 }
 
                 await placePixelOnER(px, py, colorIndex);
+                
+                // Optimistic Cooldown Update
+                setCooldownState(prev => {
+                    const now = Math.floor(Date.now() / 1000);
+                    let { placed, lastTimestamp } = prev;
+                    
+                    if (placed >= COOLDOWN_LIMIT) {
+                        if (now - lastTimestamp >= COOLDOWN_PERIOD) {
+                            placed = 0;
+                        }
+                    }
+                    
+                    placed += 1;
+                    
+                    if (placed >= COOLDOWN_LIMIT) {
+                        lastTimestamp = now;
+                    }
+                    
+                    return { placed, lastTimestamp };
+                });
+                // Sync with chain
+                if (sessionKey?.keypair) {
+                    fetchSessionAccount(sessionKey.keypair.publicKey).then(acc => {
+                        if (acc) {
+                            setCooldownState({
+                                placed: acc.cooldownCounter,
+                                lastTimestamp: acc.lastPlaceTimestamp.toNumber()
+                            });
+                        }
+                    });
+                }
+
                 updateMarker(px, py, color);
                 toast.success("Pixel placed", { duration: 1500 });
             }
@@ -582,7 +662,7 @@ export function PixelCanvas() {
             console.error("Failed to place pixel:", e);
             toast.error("Failed to place pixel: " + (e instanceof Error ? e.message : String(e)));
         }
-    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard]);
+    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard, cooldownState]);
 
 
 
@@ -639,7 +719,7 @@ export function PixelCanvas() {
             // Success
             toast.success("Shard unlocked!", { id: toastId });
             playUnlock();
-            
+
             // Refresh balance after transaction
             refreshBalance();
 
@@ -654,7 +734,7 @@ export function PixelCanvas() {
             setRecentUnlockedShards(prev => {
                 const newShard = { x: shardX, y: shardY, timestamp: Date.now() };
                 const filtered = prev.filter(s => !(s.x === shardX && s.y === shardY));
-                return [newShard, ...filtered].slice(0, 50); 
+                return [newShard, ...filtered].slice(0, 50);
             });
 
         } catch (err) {
@@ -679,10 +759,10 @@ export function PixelCanvas() {
             const shardX = Math.floor(selectedPixel.px / SHARD_DIMENSION);
             const shardY = Math.floor(selectedPixel.py / SHARD_DIMENSION);
             if (unlockingShard && unlockingShard.x === shardX && unlockingShard.y === shardY) {
-                 toast.info("Shard creation is in progress. Please wait...");
-                 return;
+                toast.info("Shard creation is in progress. Please wait...");
+                return;
             }
-            
+
             playFail();
             zoomToLockedShard(selectedPixel.px, selectedPixel.py);
             return;
@@ -864,7 +944,7 @@ export function PixelCanvas() {
 
             {/* Shard Grid Zoom Hint */}
             {showShardGrid && shardsAggregated && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
                     <div className="bg-blue-500/95 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="11" cy="11" r="8" />
@@ -876,6 +956,18 @@ export function PixelCanvas() {
                     </div>
                 </div>
             )}
+
+            {!showShardGrid && shardsAggregated && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 ">
+                <div className="bg-blue-500/95 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        <line x1="11" y1="8" x2="11" y2="14" />
+                        <line x1="8" y1="11" x2="14" y2="11" />
+                    </svg>
+                    <span>Zoom in to see pixels</span>
+                </div>
+            </div>}
 
             {/* Top Left - Zoom Controls */}
             <div className="absolute top-4 left-4 flex flex-col gap-2 z-40">
@@ -919,8 +1011,8 @@ export function PixelCanvas() {
                 <button
                     onClick={() => setShowShardGrid(!showShardGrid)}
                     className={`w-8 h-8 rounded-lg shadow-lg flex items-center justify-center transition-colors ${showShardGrid
-                            ? 'bg-blue-500 text-white hover:bg-blue-600'
-                            : 'bg-white text-slate-700 hover:bg-slate-50'
+                        ? 'bg-blue-500 text-white hover:bg-blue-600'
+                        : 'bg-white text-slate-700 hover:bg-slate-50'
                         }`}
                     title="Toggle shard grid"
                 >
@@ -932,6 +1024,17 @@ export function PixelCanvas() {
                         <line x1="15" y1="3" x2="15" y2="21" />
                     </svg>
                 </button>
+            </div>
+
+            <div className='absolute top-4 left-16 flex flex-col gap-2 z-40'>
+                {!isReadonly && (
+                    <CooldownTimer 
+                        pixelsPlaced={cooldownState.placed}
+                        maxPixels={COOLDOWN_LIMIT}
+                        lastPlaceTimestamp={cooldownState.lastTimestamp}
+                        cooldownPeriod={COOLDOWN_PERIOD}
+                    />
+                )}
             </div>
 
             {/* Top Right - Info */}
@@ -1028,7 +1131,7 @@ export function PixelCanvas() {
                                         <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
                                         <path d="M7 11V7a5 5 0 0 1 9.9-1" />
                                     </svg>
-                                    Unlocked Shards
+                                    Recent Shard Unlocks
                                 </span>
                                 <button onClick={() => setShowRecentShards(false)} className="text-slate-400 hover:text-slate-600">✕</button>
                             </div>
