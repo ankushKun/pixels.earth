@@ -248,14 +248,6 @@ export function PixelCanvas() {
         const updateCooldown = async () => {
             const acc = await fetchSessionAccount(sessionKey.keypair!.publicKey);
             if (acc) {
-                const now = Math.floor(Date.now() / 1000);
-                console.log("🔍 [DEBUG] Cooldown State:", {
-                    placed: acc.cooldownCounter,
-                    lastTimestamp: acc.lastPlaceTimestamp.toNumber(),
-                    now: now,
-                    windowElapsed: now - acc.lastPlaceTimestamp.toNumber()
-                });
-
                 setCooldownState({
                     placed: acc.cooldownCounter,
                     lastTimestamp: acc.lastPlaceTimestamp.toNumber()
@@ -267,7 +259,7 @@ export function PixelCanvas() {
         };
 
         updateCooldown();
-        const interval = setInterval(updateCooldown, 1000); // Check every 1s
+        const interval = setInterval(updateCooldown, 5000); // Check every 5s
         return () => clearInterval(interval);
     }, [sessionKey, fetchSessionAccount]);
 
