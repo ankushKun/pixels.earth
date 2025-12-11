@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-// @ts-ignore
 import popSoundUrl from '../assets/pop.mp3';
-// @ts-ignore
 import unlockSoundUrl from '../assets/shard-created.mp3';
-// @ts-ignore
 import failSoundUrl from '../assets/fail.mp3';
-// @ts-ignore
 import bgMusicUrl from '../assets/bg-loop.mp3';
 
 const MUTE_STORAGE_KEY = 'magicplace-muted';

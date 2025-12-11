@@ -30,7 +30,7 @@
 
   /* Apply custom cursor to common interactive elements */
   *, *::before, *::after {
-    cursor: inherit;
+    cursor: inherit !important;
   }
 
   /* Pointer cursor for interactive elements */

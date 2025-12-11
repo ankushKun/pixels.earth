@@ -94,10 +94,10 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
            <div className="flex flex-col items-center text-center">
             {connected ? (
                  <>
-                    <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 text-4xl shadow-inner text-emerald-500">
-                      <PenTool/>
+                    <div className="w-20 h-20 bg-emerald-200/50 rounded-full flex items-center justify-center mb-6 text-4xl shadow-inner text-emerald-500">
+                      <img src="/icon.png" alt="" />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900 mb-2">Welcome to Magicplace!</h1>
+                    <h1 className="text-2xl font-bold text-slate-900 mb-2">Welcome to pixels.earth!</h1>
                     <p className="text-slate-500 text-sm leading-relaxed mb-6 max-w-[20rem]">
                         You're all set to start creating on the infinite canvas.
                     </p>
@@ -123,7 +123,7 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
                         onClick={handleEnter}
                         className="w-full py-4 bg-slate-900 hover:bg-black text-white font-bold rounded-full shadow-[0_4px_14px_0_rgba(0,0,0,0.39)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.23)] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"
                     >
-                        Enter Magicplace
+                        Enter pixels.earth
                     </button>
                  </>
             ) : (
@@ -134,7 +134,7 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
                     </div>
                     
                     <h1 className="text-[1.75rem] font-extrabold text-slate-900 mb-2 tracking-tight">
-                        Magicplace
+                        pixels.earth
                     </h1>
                     <p className="text-slate-500 text-[0.95rem] leading-relaxed mb-8 font-medium">
                         Collaborate on an infinite pixel canvas. <br/>

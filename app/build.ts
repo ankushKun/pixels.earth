@@ -135,6 +135,17 @@ const result = await Bun.build({
   ...cliConfig,
 });
 
+// Copy public assets to output directory
+console.log("📂 Copying public assets...");
+const publicDir = path.resolve("public");
+if (existsSync(publicDir)) {
+    // Recursive copy using Bun's shell or node fs
+    // Using simple cp command for simplicity in this environment
+    // Note: Bun's shell is cross-platform enough for this standard usage usually, but let's use fs for safety if we can, or just cp -r
+    // Since we are in bun, we can use Shell
+    const { stdout, stderr } = Bun.spawnSync(["cp", "-R", "public/.", outdir]);
+}
+
 const end = performance.now();
 
 const outputTable = result.outputs.map(output => ({

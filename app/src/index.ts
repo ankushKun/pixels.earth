@@ -58,6 +58,10 @@ const server = serve({
         return jsonWithCors(user);
     },
 
+    // Serve static assets for OG tags
+    "/banner.png": Bun.file("./public/banner.png"),
+    "/icon.png": Bun.file("./public/icon.png"),
+
     // Serve index.html for /
     "/": index,
   },

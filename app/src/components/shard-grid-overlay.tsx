@@ -3,7 +3,6 @@ import { useMap as useLeafletMap } from 'react-leaflet';
 import * as L from 'leaflet';
 import { SHARD_DIMENSION, SHARDS_PER_DIM, CANVAS_RES } from '../constants';
 import { globalPxToLatLon } from '../lib/projection';
-// @ts-ignore
 import lockedTexture from '../assets/locked.jpg';
 
 
