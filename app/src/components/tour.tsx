@@ -157,6 +157,14 @@ export default function Tour() {
                 return
             }
 
+            // If wallet connected but no active session and onboarding not complete,
+            // auto-start session key flow (e.g., user connected via wallet button)
+            if (!sessionActive && currentSessionKey !== TourStateValues.InProgress && 
+                currentComplete !== TourStateValues.Completed && !isProcessing) {
+                actions.forceStart(TourItems.NeedsSessionKey)
+                return
+            }
+
             // If we're in session key step and session is already active, skip to complete
             if (currentSessionKey === TourStateValues.InProgress && sessionActive && !isProcessing) {
                 actions.complete(TourItems.NeedsSessionKey)
