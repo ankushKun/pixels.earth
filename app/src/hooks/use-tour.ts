@@ -12,6 +12,7 @@ enum TourItems {
     // Onboarding flow
     OnboardingIntro,        // First pixel click without wallet - explains app
     NeedsSessionKey,        // Wallet connected, needs session key
+    NeedsNickname,          // Ask for nickname if not set
     NeedsTopup,             // Session key created, needs balance
     NeedsAccountInit,       // Balance OK, needs account init + delegation
     OnboardingComplete,     // Everything ready, explain features
@@ -39,6 +40,7 @@ type TourStateType = {
 const defaultItems = {
     [TourItems.OnboardingIntro]: TourStateValues.Todo,
     [TourItems.NeedsSessionKey]: TourStateValues.Todo,
+    [TourItems.NeedsNickname]: TourStateValues.Todo,
     [TourItems.NeedsTopup]: TourStateValues.Todo,
     [TourItems.NeedsAccountInit]: TourStateValues.Todo,
     [TourItems.OnboardingComplete]: TourStateValues.Todo,

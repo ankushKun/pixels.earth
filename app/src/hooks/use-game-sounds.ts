@@ -4,7 +4,7 @@ import unlockSoundUrl from '../assets/shard-created.mp3';
 import failSoundUrl from '../assets/fail.mp3';
 import bgMusicUrl from '../assets/bg-loop.mp3';
 
-const MUTE_STORAGE_KEY = 'magicplace-muted';
+const MUTE_STORAGE_KEY = 'pixelworld-muted';
 
 export function useGameSounds() {
     const bgMusicRef = useRef<HTMLAudioElement | null>(null);

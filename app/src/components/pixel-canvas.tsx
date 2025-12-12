@@ -26,7 +26,7 @@ import { useGameSounds } from '../hooks/use-game-sounds';
 import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
 
 import { useMagicplaceEvents } from '../hooks/use-magicplace-events';
-import { useReadonlyMode } from './start-using';
+// import { useReadonlyMode } from './start-using';
 import { useSessionBalance } from './session-balance-provider';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useSessionKey } from '../hooks/use-session-key';
@@ -37,6 +37,7 @@ import { divIcon } from 'leaflet';
 import { Marker as LeafletMarker } from 'react-leaflet';
 import "../lib/smooth-zoom"
 import { useTourActions, TourItems } from '../hooks/use-tour';
+import { SettingsDialog } from './settings-dialog';
 
 // Custom Cursor Icon with name label
 const createCursorIcon = (color: string, name: string) => divIcon({
@@ -279,6 +280,7 @@ export function PixelCanvas() {
     const [unlockingShard, setUnlockingShard] = useState<{ x: number; y: number; status: string } | null>(null);
     const [shardMetadata, setShardMetadata] = useState<Map<string, { creator: string, pixelCount: number }>>(new Map());
     const [cooldownState, setCooldownState] = useState<{ placed: number, lastTimestamp: number }>({ placed: 0, lastTimestamp: 0 });
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const { sessionKey } = useSessionKey();
     const wallet = useWallet();
@@ -332,7 +334,9 @@ export function PixelCanvas() {
     }, [cooldownState, actions]);
 
     // Readonly mode - hide interactions
-    const { isReadonly } = useReadonlyMode();
+    // Readonly mode - hide interactions
+    // const { isReadonly } = useReadonlyMode();
+    const isReadonly = !wallet.connected;
 
     // Session balance for transaction checks
     const { checkBalance, refreshBalance } = useSessionBalance();
@@ -1468,7 +1472,7 @@ export function PixelCanvas() {
                 <Button
                     variant="secondary"
                     size="icon"
-                    // onClick={toggleMute}
+                    onClick={() => setIsSettingsOpen(true)}
                     className="bg-white/90 backdrop-blur shadow-lg hover:bg-white rounded-full h-10 w-10 border border-slate-200"
                     title="Settings"
                 >
@@ -1511,6 +1515,7 @@ export function PixelCanvas() {
                     )}
                 </div>
             )}
+            <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
         </div>
     );
 }

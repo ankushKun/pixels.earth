@@ -52,7 +52,7 @@ export interface CreateSessionKeyOptions {
 /**
  * Storage key prefix for persisting session keys
  */
-const STORAGE_KEY_PREFIX = "magicplace_session_key_";
+const STORAGE_KEY_PREFIX = "pixelworld_session_key_";
 
 /**
  * Default session duration (24 hours in milliseconds)
@@ -64,7 +64,7 @@ const DEFAULT_SESSION_DURATION = 24 * 60 * 60 * 1000;
  * This is the first signature - used to deterministically create the session key.
  */
 function generateDerivationMessage(walletPubkey: PublicKey): string {
-    return `Create session key for Magicplace\nWallet: ${walletPubkey.toBase58()}`;
+    return `Create session key for Pixelworld\nWallet: ${walletPubkey.toBase58()}`;
 }
 
 /**
@@ -101,6 +101,7 @@ interface SessionKeyContextType {
     isExpired: boolean;
     timeRemaining: number | null;
     isLoading: boolean;
+    isRestoring: boolean;
     error: string | null;
     createSessionKey: (options?: CreateSessionKeyOptions) => Promise<Keypair>;
     revokeSession: (salt?: string) => void;
@@ -128,6 +129,7 @@ export function SessionKeyProvider({ children }: { children: ReactNode }) {
     });
     
     const [isLoading, setIsLoading] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(true); // Default to true to prevent premature redirects
     const [error, setError] = useState<string | null>(null);
 
     /**
@@ -150,7 +152,9 @@ export function SessionKeyProvider({ children }: { children: ReactNode }) {
             const storageKey = getStorageKey(salt);
             const stored = localStorage.getItem(storageKey);
             
-            if (!stored) return false;
+            if (!stored) {
+                return false;
+            }
             
             const { derivationSignature, authSignature, createdAt, expiresAt, walletPubkey } = JSON.parse(stored);
             
@@ -184,10 +188,13 @@ export function SessionKeyProvider({ children }: { children: ReactNode }) {
                 authSignature: authSignatureBytes,
             });
             
+            
             return true;
         } catch (err) {
             console.debug("Failed to restore session:", err);
             return false;
+        } finally {
+            setIsRestoring(false);
         }
     }, [wallet.publicKey, wallet.signMessage, getStorageKey]);
 
@@ -372,7 +379,11 @@ export function SessionKeyProvider({ children }: { children: ReactNode }) {
      */
     useEffect(() => {
         if (wallet.publicKey && !sessionState.isActive) {
+            setIsRestoring(true);
             restoreSession();
+        } else if (!wallet.publicKey) {
+             // If no wallet connected, we are not restoring
+             setIsRestoring(false);
         }
     }, [wallet.publicKey, restoreSession, sessionState.isActive]);
 
@@ -415,6 +426,7 @@ export function SessionKeyProvider({ children }: { children: ReactNode }) {
         isExpired,
         timeRemaining,
         isLoading,
+        isRestoring,
         error,
         createSessionKey,
         revokeSession,
@@ -426,6 +438,7 @@ export function SessionKeyProvider({ children }: { children: ReactNode }) {
         isExpired,
         timeRemaining,
         isLoading,
+        isRestoring,
         error,
         createSessionKey,
         revokeSession,

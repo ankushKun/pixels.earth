@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSessionKey } from "@/hooks/use-session-key"
 import { useTourActions, useTourItems, TourItems, TourStateValues } from "../hooks/use-tour"
+import { getNickname, setNickname } from "@/hooks/use-gun-presence"
 import Character from "./character"
 import { Button } from "./ui/button"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
@@ -118,7 +119,7 @@ function TourDialogue({ title, description, children, footer, className }: TourD
 export default function Tour() {
     const items = useTourItems()
     const actions = useTourActions()
-    const { sessionKey, isActive: sessionActive, createSessionKey, isLoading: sessionLoading } = useSessionKey()
+    const { sessionKey, isActive: sessionActive, createSessionKey, isLoading: sessionLoading, isRestoring } = useSessionKey()
     const { connection } = useConnection()
     const wallet = useWallet()
     const { initializeUser, delegateUser, checkUserDelegation } = useMagicplaceProgram()
@@ -139,6 +140,7 @@ export default function Tour() {
         init: false,
         delegate: false,
     })
+    const nicknameInputRef = useRef<HTMLInputElement>(null)
 
     // Show LowSessionBalance dialog when there's a topup request
     useEffect(() => {
@@ -199,13 +201,29 @@ export default function Tour() {
             if (currentIntro === TourStateValues.InProgress) {
                 actions.complete(TourItems.OnboardingIntro)
                 actions.forceStart(TourItems.NeedsSessionKey)
+                actions.forceStart(TourItems.NeedsSessionKey)
                 return
+            }
+            
+            // Check Nickname
+            const hasNickname = !!getNickname()
+            const currentNickname = items[TourItems.NeedsNickname]
+            
+            if (currentNickname !== TourStateValues.Completed) {
+                if (hasNickname) {
+                    actions.complete(TourItems.NeedsNickname)
+                } else {
+                    if (currentNickname !== TourStateValues.InProgress) {
+                        actions.forceStart(TourItems.NeedsNickname)
+                    }
+                    return // Stop here until nickname is set
+                }
             }
 
             // If wallet connected but no active session and onboarding not complete,
             // auto-start session key flow (e.g., user connected via wallet button)
             if (!sessionActive && currentSessionKey !== TourStateValues.InProgress && 
-                currentComplete !== TourStateValues.Completed && !isProcessing) {
+                currentComplete !== TourStateValues.Completed && !isProcessing && !isRestoring) {
                 actions.forceStart(TourItems.NeedsSessionKey)
                 return
             }
@@ -217,7 +235,7 @@ export default function Tour() {
                 return
             }
         }
-    }, [wallet.connected, wallet.connecting, sessionActive, isProcessing, items, actions, hasExplored])
+    }, [wallet.connected, wallet.connecting, sessionActive, isProcessing, items, actions, hasExplored, isRestoring])
 
     // Find installed wallets
     const installedWallets = wallet.wallets.filter(
@@ -342,7 +360,8 @@ export default function Tour() {
     // =========================================================================
     // Render Logic - Priority-based content selection
     // =========================================================================
-    const getContent = (): React.ReactNode => {
+    // Use useMemo to prevent re-renders of the content when typing in input
+    const content = useMemo(() => {
         // Priority 1: Onboarding Intro (pixel click without wallet)
         if (items[TourItems.OnboardingIntro] === TourStateValues.InProgress) {
             return (
@@ -362,7 +381,7 @@ export default function Tour() {
                     }
                 >
                     {wallet.connecting ? (
-                        <div className="flex items-center justify-center gap-2 py-4 px-6 bg-slate-50 rounded-2xl border border-slate-100 w-full">
+                        <div className="flex items-center justify-center gap-2 py-4 px-6 w-fit">
                             <SpinnerIcon size={20} />
                             <span className="text-slate-600 font-medium">Connecting...</span>
                         </div>
@@ -463,6 +482,48 @@ export default function Tour() {
                     >
                         {sessionLoading ? "Processing..." : "Start Setup 🚀"}
                     </Button>
+                </TourDialogue>
+            )
+        }
+
+
+
+        // Priority 2.5: Needs Nickname
+        if (items[TourItems.NeedsNickname] === TourStateValues.InProgress) {
+            return (
+                <TourDialogue
+                    title="Choose a Nickname 👤"
+                    description="How should we call you on the map?"
+                >
+                    <div className="w-full space-y-3 p-1 flex flex-col items-center justify-center">
+                        <input
+                            ref={nicknameInputRef}
+                            type="text"
+                            placeholder="Enter a display name..."
+                            maxLength={20}
+                            // autoFocus
+                            autoFocus
+                            className="w-2/3 px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                            onKeyDown={(e) => { 
+                                if (e.key === 'Enter' && nicknameInputRef.current?.value.trim()) {
+                                    setNickname(nicknameInputRef.current.value.trim());
+                                    actions.complete(TourItems.NeedsNickname);
+                                }
+                            }}
+                        />
+                        <Button 
+                            onClick={() => {
+                                if (nicknameInputRef.current?.value.trim()) {
+                                    setNickname(nicknameInputRef.current.value.trim())
+                                    actions.complete(TourItems.NeedsNickname)
+                                }
+                            }} 
+                            // disabled={!nicknameInputRef.current?.value.trim()} // Cannot reactively disable
+                            className="w-fit"
+                        >
+                            Continue
+                        </Button>
+                    </div>
                 </TourDialogue>
             )
         }
@@ -641,9 +702,28 @@ export default function Tour() {
         }
 
         return null
-    }
-
-    const content = getContent()
+    }, [
+        items, 
+        wallet.connecting, 
+        wallet.connected, 
+        isProcessing, 
+        setupStep, 
+        stepStatus, 
+        error, 
+        sessionLoading, 
+        topupRequest, 
+        sessionBalance, 
+        isTopupLoading, 
+        installedWallets, 
+        actions, 
+        handleCreateSessionKey, 
+        handleOnboardingComplete, 
+        handleWalletSelect, 
+        handleTopup, 
+        handleCancelTopup,
+        setNickname,
+        setHasExplored
+    ])
 
     return (
         <Character>

@@ -75,7 +75,7 @@ export default function Character(props: React.HTMLAttributes<HTMLDivElement> & 
             case 'exiting':
                 return 'animate-slide-out-left'
             case 'flipping':
-                return 'animate-frame-flip'
+                return ''
             default:
                 return ''
         }

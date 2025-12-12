@@ -10,8 +10,8 @@ const PEERS = [
 ];
 
 // Constants
-const PRESENCE_KEY = 'magicplace-presence-v2';
-const NICKNAME_STORAGE_KEY = 'magicplace-nickname';
+const PRESENCE_KEY = 'pixelworld-presence-v2';
+const NICKNAME_STORAGE_KEY = 'pixelworld-nickname';
 const CLEANUP_INTERVAL_MS = 5000;
 const INACTIVE_THRESHOLD_MS = 30000; // 30 seconds timeout
 const BROADCAST_THROTTLE_MS = 50; // Broadcast more frequently for smoother updates
@@ -75,12 +75,12 @@ export function useGunPresence() {
     const myIdRef = useRef<string>("");
     if (!myIdRef.current) {
          try {
-            const stored = sessionStorage.getItem('magicplace-anon-id');
+            const stored = sessionStorage.getItem('pixelworld-anon-id');
             if (stored) {
                 myIdRef.current = stored;
             } else {
                 const newId = Math.random().toString(36).substr(2, 9);
-                sessionStorage.setItem('magicplace-anon-id', newId);
+                sessionStorage.setItem('pixelworld-anon-id', newId);
                 myIdRef.current = newId;
             }
         } catch {
