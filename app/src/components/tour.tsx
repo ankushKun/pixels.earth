@@ -70,6 +70,51 @@ function StepIndicator({ label, done, active }: StepIndicatorProps) {
 // Tour Component
 // ============================================================================
 
+// ============================================================================
+// Tour Dialogue Layout
+// ============================================================================
+
+interface TourDialogueProps {
+    title: React.ReactNode
+    description?: React.ReactNode
+    children?: React.ReactNode
+    footer?: React.ReactNode
+    className?: string
+}
+
+function TourDialogue({ title, description, children, footer, className }: TourDialogueProps) {
+    return (
+        <div className={`flex flex-col items-center justify-center w-full h-full p-0 gap-1 wrap-break-words ${className || ''}`}>
+            <div className="text-center space-y-0.5 shrink-0">
+                <h2 className="text-lg font-black tracking-tight text-slate-900 leading-tight">{title}</h2>
+                {description && (
+                    <div className="text-xs font-medium text-slate-500 leading-snug mx-auto">
+                        {description}
+                    </div>
+                )}
+            </div>
+            {children && (
+                <div className="flex flex-col items-center justify-center gap-1 w-full shrink-0">
+                    {children}
+                </div>
+            )}
+            {footer && (
+                <div className="mt-0 shrink-0">
+                    {footer}
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ... lines 122-340 ...
+
+
+
+// ============================================================================
+// Tour Component
+// ============================================================================
+
 export default function Tour() {
     const items = useTourItems()
     const actions = useTourActions()
@@ -301,47 +346,67 @@ export default function Tour() {
         // Priority 1: Onboarding Intro (pixel click without wallet)
         if (items[TourItems.OnboardingIntro] === TourStateValues.InProgress) {
             return (
-                <div className="flex flex-col gap-3">
-                    <p className="text-lg font-bold">
-                        Welcome to <span className="text-indigo-600">pixels.earth</span>! 🎨
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        This is a massive pixel canvas powered by Solana.<br/> Connect your wallet to start creating!
-                    </p>
-                    
+                <TourDialogue
+                    title={<>Welcome to <span className="text-green-600">pixels.earth</span>! 🎨</>}
+                    description={<div className="text-sm">This is a massive pixel canvas powered by Solana.<br/>Connect your wallet to start creating!</div>}
+                    footer={
+                        <button 
+                            onClick={() => {
+                                setHasExplored(true)
+                                actions.complete(TourItems.OnboardingIntro)
+                            }}
+                            className="text-zinc-400 hover:text-slate-600 text-[10px] uppercase tracking-wider font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                        >
+                            Just explore for now →
+                        </button>
+                    }
+                >
                     {wallet.connecting ? (
-                        <div className="flex items-center justify-center gap-2 py-3">
+                        <div className="flex items-center justify-center gap-2 py-4 px-6 bg-slate-50 rounded-2xl border border-slate-100 w-full">
                             <SpinnerIcon size={20} />
-                            <span className="text-slate-600">Connecting...</span>
+                            <span className="text-slate-600 font-medium">Connecting...</span>
                         </div>
                     ) : (
-                        <div className="flex gap-2 mt-2 items-center justify-center">
-                            {installedWallets.map((w) => (
-                                <button
-                                    key={w.adapter.name}
-                                    onClick={() => handleWalletSelect(w.adapter.name)}
-                                    className="flex items-center gap-3 p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all active:scale-[0.98]"
-                                >
-                                    <img 
-                                        src={w.adapter.icon} 
-                                        alt={w.adapter.name} 
-                                        className="w-7 h-7 rounded-lg"
-                                    />
-                                    {/* <span className="font-semibold text-slate-700">{w.adapter.name}</span> */}
-                                </button>
-                            ))}
+                        <div className="w-full flex flex-col gap-1 items-center justify-center">
+                            <div className="flex flex-wrap gap-1 p-2 items-center justify-center w-fit mx-auto max-h-[140px] overflow-y-auto px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                                {installedWallets.map((w) => (
+                                    <button
+                                        key={w.adapter.name}
+                                        onClick={() => handleWalletSelect(w.adapter.name)}
+                                        className="flex items-center gap-2 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 hover:border-indigo-100 rounded-lg transition-all active:scale-[0.98] w-fit mx-auto group shrink-0"
+                                    >
+                                        <img 
+                                            src={w.adapter.icon} 
+                                            alt={w.adapter.name} 
+                                            className="w-5 h-5 rounded-md shadow-sm"
+                                        />
+                                        <span className="font-bold text-slate-700 text-sm group-hover:text-indigo-700 transition-colors">{w.adapter.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {installedWallets.length === 0 && (
+                                <div className="flex flex-col items-center gap-1 w-full mt-0">
+                                    <span className="text-xs text-slate-500 font-medium">
+                                        No wallet detected
+                                    </span>
+                                    <a 
+                                        href="https://phantom.app/" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="flex items-center justify-center gap-2 px-4 py-1.5 w-fit bg-[#551BF9] hover:bg-[#4615cf] text-white rounded-lg transition-all font-bold text-sm shadow-sm hover:shadow-md active:scale-[0.98]"
+                                    >
+                                        <span>Install Phantom</span>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                            <polyline points="15 3 21 3 21 9" />
+                                            <line x1="10" y1="14" x2="21" y2="3" />
+                                        </svg>
+                                    </a>
+                                </div>
+                            )}
                         </div>
                     )}
-                    <button 
-                        onClick={() => {
-                            setHasExplored(true)
-                            actions.complete(TourItems.OnboardingIntro)
-                        }}
-                        className="text-slate-400 hover:text-slate-600 text-xs mt-3 underline underline-offset-2 transition-colors cursor-pointer"
-                    >
-                        Just explore for now →
-                    </button>
-                </div>
+                </TourDialogue>
             )
         }
 
@@ -349,74 +414,85 @@ export default function Tour() {
         if (items[TourItems.NeedsSessionKey] === TourStateValues.InProgress) {
             if (isProcessing || setupStep) {
                 return (
-                    <div className="flex flex-col gap-3">
-                        <p className="text-lg font-bold">Setting up your session...</p>
-                        <div className="flex flex-col gap-2 mt-2">
+                    <TourDialogue
+                        title="Setting up your Session... ⚙️"
+                        description="Creating a high-speed signer for instant play."
+                    >
+                        <div className="flex flex-col gap-1 w-fit bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                             <StepIndicator label="Derive session key" done={stepStatus.derive} active={setupStep === "deriving"} />
                             <StepIndicator label="Authorize session" done={stepStatus.authorize} active={setupStep === "authorizing"} />
-                           <div className="flex items-center gap-1"> <StepIndicator label="Fund gas (0.01 SOL)" done={stepStatus.fund} active={setupStep === "funding"} /> <span className="text-xs text-blue-600"> [<a href="https://faucet.solana.com/" className="underline underline-offset-2">devnet faucet</a>]</span></div>
+                            <div className="flex items-center justify-between w-full gap-1">
+                                <StepIndicator label="Fund gas (0.01 SOL)" done={stepStatus.fund} active={setupStep === "funding"} />
+                                <a href="https://faucet.solana.com/" target="_blank" className="text-xs text-blue-500 hover:text-blue-700 font-medium underline">Need SOL?</a>
+                            </div>
                             <StepIndicator label="Initialize account" done={stepStatus.init} active={setupStep === "initializing"} />
                             <StepIndicator label="Enable fast mode" done={stepStatus.delegate} active={setupStep === "delegating"} />
                         </div>
                         {error && (
-                            <>
-                                <p className="text-red-500 text-sm mt-2">{error}</p>
-                                <Button onClick={handleCreateSessionKey} className="mt-2">
-                                    Retry
-                                </Button>
-                            </>
+                            <div className="flex flex-col items-center gap-2 w-full">
+                                <p className="text-red-500 text-sm font-medium text-center">{error}</p>
+                                <Button onClick={handleCreateSessionKey} className="w-full">Try Again</Button>
+                            </div>
                         )}
-                    </div>
+                    </TourDialogue>
                 )
             }
 
             return (
-                <div className="flex flex-col gap-3">
-                    <p className="text-lg font-bold">
-                        Let's set up your <span className="text-indigo-600">Session</span> 🔑
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        Session keys let you place pixels <span className="text-indigo-600 font-medium">instantly</span> without popups.
-                    </p>
-                    {/* <div className="bg-slate-50 rounded-xl p-3 space-y-2 text-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="text-indigo-600">•</span>
-                            <span>2 signature approvals</span>
+                <TourDialogue
+                    title={<>Set up your <span className="text-indigo-600">Session</span> 🔑</>}
+                    description={<div className="text-sm w-full">Session keys let you place pixels <span className="text-indigo-600 font-bold">instantly</span><br/> without wallet popups every time!</div>}
+                >
+                    <div className="p-2 space-y-1.5 w-fit">
+                        <div className="flex items-center gap-3 text-slate-700">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">1</div>
+                            <span className="font-medium text-sm">One-time setup (just need to sign a message)</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-indigo-600">•</span>
-                            <span>0.01 SOL for gas fees</span>
+                        <div className="flex items-center gap-3 text-slate-700">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">2</div>
+                            <span className="font-medium text-sm">Small top up for fees (~0.01 SOL)</span>
                         </div>
-                    </div> */}
-                    {error && (
-                        <p className="text-red-500 text-sm">{error}</p>
-                    )}
-                    <Button onClick={handleCreateSessionKey} disabled={sessionLoading} className="mt-2">
-                        {sessionLoading ? "Processing..." : "Start Setup"}
+                    </div>
+                    
+                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                    
+                    <Button 
+                        onClick={handleCreateSessionKey} 
+                        disabled={sessionLoading}
+                        className="w-fit py-4 text-base rounded-xl shadow-md hover:shadow-lg transition-all"
+                    >
+                        {sessionLoading ? "Processing..." : "Start Setup 🚀"}
                     </Button>
-                </div>
+                </TourDialogue>
             )
         }
-
-        // Skip NeedsTopup and NeedsAccountInit - handled in the session key flow now
 
         // Priority 5: Onboarding Complete
         if (items[TourItems.OnboardingComplete] === TourStateValues.InProgress) {
             return (
-                <div className="flex flex-col gap-2">
-                    <p className="text-2xl font-bold">
-                        You're all set!
-                    </p>
-                    <ul className="text-sm text-slate-600 space-y-1">
-                        <li>Click any pixel to place your color</li>
-                        <li>Unlock shards to <span className="text-emerald-600 font-medium">earn SOL</span> from premiums!</li>
-                        <li>Placing on unlocked shards is <span className="text-blue-600 font-medium">free</span></li>
-                        <li>Shards you don't own have a cooldown</li>
-                    </ul>
-                    <Button onClick={handleOnboardingComplete} className="mt-2">
-                        Let's Go! 🎨
+                <TourDialogue
+                    className="w-full"
+                    title="You're all set! 🎉"
+                    // description={<>Welcome to the canvas. Here is how it works:</>}
+                >
+                    <div className="flex flex-col bg-white p-1 text-left">
+                        <div className="flex gap-2.5 items-start">
+                            <span className="text-lg">🖌️</span>
+                            <p className="text-sm text-slate-600 leading-snug font-medium">Click any pixel to paint it with your selected color.</p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                            <span className="text-lg">💎</span>
+                            <p className="text-sm text-slate-600 leading-snug font-medium">Unlock shards to <span className="text-emerald-600 font-bold">earn SOL</span> when others paint there.</p>
+                        </div>
+                        <div className="flex gap-2.5 items-start">
+                            <span className="text-lg">⚡</span>
+                            <p className="text-sm text-slate-600 leading-snug font-medium">Painting on shards you own is completely <span className="text-emerald-600 font-bold">free</span>.</p>
+                        </div>
+                    </div>
+                    <Button onClick={handleOnboardingComplete} className="w-fit mt-0 ">
+                        Let's Paint! 🎨
                     </Button>
-                </div>
+                </TourDialogue>
             )
         }
 
@@ -426,159 +502,141 @@ export default function Tour() {
 
         if (items[TourItems.ClickedOnLockedShard] === TourStateValues.InProgress) {
             return (
-                <div className="flex flex-col gap-2 items-center justify-center">
-                    <p className="text-lg font-bold">
-                        This shard is locked! 🔒
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        Unlock to place pixels <span className="text-blue-600 font-medium">freely</span> — no cooldowns!
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        Owners <span className="text-emerald-600 font-medium">earn SOL</span> when others skip cooldowns.
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1 justify-center">
-                        Tap <ScanEye className="w-4 h-4 inline text-black" /> (top-left) to see unlocked shards and their owners.
-                    </p>
-                    <Button onClick={() => actions.complete(TourItems.ClickedOnLockedShard)} className="w-fit mx-auto mt-2">
+                <TourDialogue
+                    title="This shard is locked! 🔒"
+                    description={<div className="text-sm">
+                        Unlock it to place pixels <span className="text-emerald-600 font-bold">freely</span> and bypass cooldowns!
+                       <div className="flex flex-col items-center gap-2">
+                            <p className="text-sm">
+                                Owners <span className="text-emerald-600 font-bold">earn SOL</span> when others skip cooldowns.
+                            </p>
+                       </div>
+                        <div className="flex items-center justify-center gap-1 mt-2 text-center">
+                            Click on the <ScanEye className="text-black"/> at top left to view all shard details
+                       </div>
+                    </div>}
+                >
+                    <Button onClick={() => actions.complete(TourItems.ClickedOnLockedShard)} className="w-">
                         Got it!
                     </Button>
-                </div>
+                </TourDialogue>
             )
         }
 
-        // Congratulate user on first shard unlock
         if (items[TourItems.UnlockedShard] === TourStateValues.InProgress) {
             return (
-                <div className="flex flex-col items-center justify-center gap-3">
-                    <p className="text-lg font-bold">
-                        Congratulations! 🎉
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        You <span className="text-indigo-600 font-semibold">own</span> this shard — no cooldowns for you!
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        Others pay <span className="text-amber-600 font-semibold">premium</span> to skip cooldowns here. <br />
-                        <span className="text-emerald-600 font-semibold">You earn</span> from every skip!
-                    </p>
-                    <Button onClick={() => actions.complete(TourItems.UnlockedShard)}>
+                 <TourDialogue
+                    title="Congratulations! 🎉"
+                    description={<>
+                        You now <span className="text-indigo-600 font-bold">own</span> this shard!
+                    </>}
+                >
+                    <div className="bg-emerald-50 rounded-xl p-3 w-full text-center border border-emerald-100">
+                        <p className="text-emerald-800 font-medium text-sm">
+                            ✨ No cooldowns for you here!<br/>
+                            💰 You earn SOL from premiums!
+                        </p>
+                    </div>
+                    <Button onClick={() => actions.complete(TourItems.UnlockedShard)} className="w-full">
                         Awesome! 🚀
                     </Button>
-                </div>
+                </TourDialogue>
             )
         }
 
-        // Low Session Balance - prompt for topup
         if (items[TourItems.LowSessionBalance] === TourStateValues.InProgress && topupRequest) {
             const suggestedAmount = Math.max(0.01, Math.ceil((topupRequest.amountNeeded - (sessionBalance || 0) + 0.005) * 100) / 100)
             return (
-                <div className="flex flex-col gap-1.5 items-center">
-                    <p className="text-lg font-bold">
-                        Low Session Balance 💰
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        {topupRequest.reason}
-                    </p>
-                    <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-1">
-                        <div className="flex justify-between">
-                            <span className="text-slate-500">Current balance</span>
-                            <span className="font-mono">{(sessionBalance || 0).toFixed(4)} SOL</span>
+                 <TourDialogue
+                    title="Low Session Gas ⛽"
+                    description={topupRequest.reason}
+                    footer={
+                        <a href="https://faucet.solana.com/" target="_blank" className="text-xs text-slate-400 hover:text-slate-600 underline">Need devnet SOL?</a>
+                    }
+                >
+                    <div className="bg-slate-50 rounded-xl p-2 px-4 w-fit border border-slate-100 space-y-1.5">
+                         <div className="flex justify-between items-center text-sm gap-2    ">
+                            <span className="text-slate-500">Current Balance</span>
+                            <span className="font-mono font-medium text-slate-900">{(sessionBalance || 0).toFixed(4)} SOL</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-slate-500">Needed</span>
-                            <span className="font-mono text-red-600">{topupRequest.amountNeeded.toFixed(4)} SOL</span>
+                        <div className="flex justify-between items-center text-sm gap-2">
+                            <span className="text-slate-500">Required</span>
+                            <span className="font-mono font-bold text-red-500">{topupRequest.amountNeeded.toFixed(4)} SOL</span>
                         </div>
-                        <div className="flex justify-between border-t border-slate-200 pt-1 mt-1">
-                            <span className="text-slate-700 font-medium">Top-up amount</span>
-                            <span className="font-mono text-emerald-600">{suggestedAmount.toFixed(3)} SOL</span>
+                        <div className="h-px bg-slate-200 w-full my-0.5" />
+                        <div className="flex justify-between items-center text-sm gap-2">
+                            <span className="text-slate-600 font-bold">Top Up Amount</span>
+                            <span className="font-mono font-bold text-emerald-600">{suggestedAmount.toFixed(3)} SOL</span>
                         </div>
                     </div>
-                    {error && (
-                        <p className="text-red-500 text-sm">{error}</p>
-                    )}
-                    <div className="flex gap-2">
-                        <Button onClick={handleTopup} disabled={isTopupLoading} className="flex-1">
-                            {isTopupLoading ? "Processing..." : `Top Up ${suggestedAmount.toFixed(3)} SOL`}
-                        </Button>
-                        <Button variant="outline" onClick={handleCancelTopup} disabled={isTopupLoading}>
+                    
+                    {error && <p className="text-red-500 text-sm">{error}</p>}
+
+                    <div className="flex gap-3 w-fit">
+                         <Button variant="outline" onClick={handleCancelTopup} disabled={isTopupLoading} className="flex-1">
                             Cancel
                         </Button>
+                        <Button onClick={handleTopup} disabled={isTopupLoading} className="flex-1" style={{ flex: 2 }}>
+                            {isTopupLoading ? "Processing..." : "Top Up Now"}
+                        </Button>
                     </div>
-                    <a 
-                        href="https://faucet.solana.com/" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-xs underline text-white underline-offset-4 absolute -bottom-10 text-center mx-auto"
-                    >
-                        Need devnet SOL? Use Faucet
-                    </a>
-                </div>
+                </TourDialogue>
             )
         }
 
         if (items[TourItems.PixelPlaceWithoutLogin] === TourStateValues.InProgress) {
-            return (
-                <div className="flex flex-col gap-3">
-                    <p className="text-lg font-bold">
-                        Connect your wallet! ✋
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        You need a Solana wallet to place pixels on the canvas.
-                    </p>
-                    {installedWallets.slice(0, 2).map((w) => (
+             return (
+                <TourDialogue
+                    title="Connect to Paint 🎨"
+                    description="You need a wallet to leave your mark."
+                >
+                     {installedWallets.slice(0, 2).map((w) => (
                         <button
                             key={w.adapter.name}
                             onClick={() => {
                                 handleWalletSelect(w.adapter.name)
                                 actions.complete(TourItems.PixelPlaceWithoutLogin)
                             }}
-                            className="flex items-center gap-3 px-4 py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all active:scale-[0.98]"
+                            className="flex items-center gap-3 px-4 py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all active:scale-[0.98] w-full"
                         >
                             <img src={w.adapter.icon} alt={w.adapter.name} className="w-6 h-6 rounded-lg"/>
-                            <span className="font-semibold text-slate-700">{w.adapter.name}</span>
+                            <span className="font-semibold text-slate-700">Connect {w.adapter.name}</span>
                         </button>
                     ))}
-                </div>
+                </TourDialogue>
             )
         }
 
-        // Cooldown started - explain limit system
         if (items[TourItems.CooldownLimitReached] === TourStateValues.InProgress) {
             return (
-                <div className="flex flex-col gap-2 items-center justify-center">
-                    <p className="text-lg font-bold">
-                        Cooldown Active! ⏳
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        You've placed <span className="text-blue-600 font-medium">50 pixels</span> — wait 30s or:
-                    </p>
-                    <ul className="text-sm text-slate-600 space-y-1">
-                        <li>• <span className="text-amber-600 font-medium">Pay premium</span> to bypass for 3 hours</li>
-                        <li>• <span className="text-emerald-600 font-medium">Unlock a shard</span> to place freely forever</li>
-                    </ul>
-                    <p className="text-xs text-slate-400 mt-1">
-                        Check the counter in <span className="font-medium">top-left</span> for your progress!
-                    </p>
-                    <Button onClick={() => actions.complete(TourItems.CooldownLimitReached)} className="w-fit">
+                <TourDialogue
+                    title="Cooldown Active! ⏳"
+                    description={<>You've placed <span className="text-blue-600 font-bold">50 pixels</span>.</>}
+                >
+                    <div className="w-full text-left space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                         <p className="text-sm text-slate-600">Wait 30s or:</p>
+                         <ul className="text-sm text-slate-700 space-y-1 font-medium">
+                            <li className="flex items-center gap-2">💎 <span className="text-amber-600">Pay premium</span> to bypass</li>
+                            <li className="flex items-center gap-2">🔓 <span className="text-emerald-600">Unlock shard</span> to bypass forever</li>
+                        </ul>
+                    </div>
+                    <Button onClick={() => actions.complete(TourItems.CooldownLimitReached)} className="w-full">
                         Got it!
                     </Button>
-                </div>
+                </TourDialogue>
             )
         }
 
-        // Cooldown completed - encourage to continue
         if (items[TourItems.CooldownCompleted] === TourStateValues.InProgress) {
             return (
-                <div className="flex flex-col gap-3 items-center justify-center">
-                    <p className="text-lg font-bold">
-                        You're Back! 🎨
-                    </p>
-                    <p className="text-sm text-slate-600">
-                        Cooldown's over — go place more pixels!
-                    </p>
-                    <Button onClick={() => actions.complete(TourItems.CooldownCompleted)} className="w-fit">
+                <TourDialogue
+                    title="Ready to Paint! 🎨"
+                    description="Your cooldown is over."
+                >
+                    <Button onClick={() => actions.complete(TourItems.CooldownCompleted)} className="w-full">
                         Let's Go!
                     </Button>
-                </div>
+                </TourDialogue>
             )
         }
 

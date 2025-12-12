@@ -90,11 +90,11 @@ export default function Character(props: React.HTMLAttributes<HTMLDivElement> & 
                 props.className
             )}
         >
-            <img src={currentFrame === 1 ? speech2 : speech1} />
+            <img src={currentFrame === 1 ? speech2 : speech1} draggable={false} />
             <div
                 key={flipKey}
                 className={cn(
-                    "absolute top-[51px] right-[50px] max-w-[485px] min-w-[485px] w-full h-[226px] break-all text-ellipsis text-center flex flex-col items-center justify-center",
+                    "absolute top-[51px] right-[50px] max-w-[485px] min-w-[485px] w-full h-[226px] break-words text-ellipsis text-center flex flex-col items-center justify-center",
                     animationState === 'flipping' && 'animate-frame-flip'
                 )}
             >
