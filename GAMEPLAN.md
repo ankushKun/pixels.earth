@@ -1,4 +1,4 @@
-# Magicplace
+# pixels.earth
 
 - The entire earths maps is a pixel grid of 2^19 x 2^19 pixels, that's 524,288 x 524,288 = 274,625,296 pixels total.
 - The entire map is divided into 128x128 pixel shards, so there are 4096 x 4096 = 16,777,216 total shards.

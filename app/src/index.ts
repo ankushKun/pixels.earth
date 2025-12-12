@@ -77,4 +77,4 @@ const server = serve({
 });
 
 console.log(`🚀 Server running at ${server.url}`);
-console.log(`📊 Analytics API available at ${server.url}/stats`);
+console.log(`📊 Analytics API available at ${server.url}stats`);
