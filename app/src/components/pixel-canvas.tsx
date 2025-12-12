@@ -20,7 +20,7 @@ import {
 } from '../constants';
 import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
-import { Brush, Eraser, Grid2X2Plus, Unlock, Volume2, VolumeX } from 'lucide-react';
+import { Brush, Eraser, Grid2X2, Grid3X3, LayoutGrid, ScanEye, Settings, Unlock, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGameSounds } from '../hooks/use-game-sounds';
 import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
@@ -36,6 +36,7 @@ import { useGunPresence } from '../hooks/use-gun-presence';
 import { divIcon } from 'leaflet';
 import { Marker as LeafletMarker } from 'react-leaflet';
 import "../lib/smooth-zoom"
+import { useTourActions, TourItems } from '../hooks/use-tour';
 
 // Custom Cursor Icon with name label
 const createCursorIcon = (color: string, name: string) => divIcon({
@@ -74,15 +75,6 @@ const PaintBrushIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08" />
         <path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z" />
-    </svg>
-);
-
-const GridIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="7" height="7" x="3" y="3" rx="1" />
-        <rect width="7" height="7" x="14" y="3" rx="1" />
-        <rect width="7" height="7" x="14" y="14" rx="1" />
-        <rect width="7" height="7" x="3" y="14" rx="1" />
     </svg>
 );
 
@@ -152,7 +144,7 @@ function MapEventsHandler({ onMapClick, onMapReady, onMoveEnd, onZoomEnd, onMous
 }
 
 // LocalStorage key for persisting map view
-const MAP_VIEW_STORAGE_KEY = 'magicplace-map-view';
+const MAP_VIEW_STORAGE_KEY = 'pixelsearth-map-view';
 
 interface SavedMapView {
     center: [number, number];
@@ -207,6 +199,7 @@ function Color({ color, selected, onClick }: { color: string, selected: boolean,
 
 export function PixelCanvas() {
     const { onlineUsers, updateMyPresence, myId } = useGunPresence();
+    const actions = useTourActions();
 
     const {
         mapRef,
@@ -277,6 +270,7 @@ export function PixelCanvas() {
     const [cooldownState, setCooldownState] = useState<{ placed: number, lastTimestamp: number }>({ placed: 0, lastTimestamp: 0 });
 
     const { sessionKey } = useSessionKey();
+    const wallet = useWallet();
 
     // Magicplace program hook for checking shard delegation status
     const {
@@ -316,14 +310,15 @@ export function PixelCanvas() {
     useEffect(() => {
         if (cooldownState.placed >= COOLDOWN_LIMIT) {
             const now = Math.floor(Date.now() / 1000);
-            // Only show toast if the limit was reached extremely recently (< 2s)
+            // Only show toast if the limit was reached extremely recently (<2s)
             // This prevents spam on page refresh if we are mid-cooldown
             if (now - cooldownState.lastTimestamp < 2) {
                 toast.error("Limit reached! Wait 30 seconds.");
-                playFail();
+                // Show first-time cooldown explanation
+                actions.start(TourItems.CooldownLimitReached);
             }
         }
-    }, [cooldownState]);
+    }, [cooldownState, actions]);
 
     // Readonly mode - hide interactions
     const { isReadonly } = useReadonlyMode();
@@ -600,6 +595,7 @@ export function PixelCanvas() {
 
     // Zoom to show a locked shard
     const zoomToLockedShard = useCallback((px: number, py: number) => {
+        actions.forceStart(TourItems.ClickedOnLockedShard);
         if (!mapRef.current) return;
 
         const shardX = Math.floor(px / SHARD_DIMENSION);
@@ -622,7 +618,7 @@ export function PixelCanvas() {
             // Zoom out to level 13 and center on shard
             mapRef.current.setView([lat, lon], 13, { animate: true });
         }
-    }, [mapRef]);
+    }, [mapRef, actions]);
 
     // Place pixel at coordinates
     const handlePlacePixelAt = useCallback(async (px: number, py: number) => {
@@ -633,6 +629,8 @@ export function PixelCanvas() {
             if (elapsed < COOLDOWN_PERIOD) {
                 playFail();
                 toast.error(`Burst limit reached! Wait ${COOLDOWN_PERIOD - elapsed}s`);
+                // Show cooldown explanation dialog
+                actions.forceStart(TourItems.CooldownLimitReached);
                 return;
             }
         }
@@ -707,6 +705,19 @@ export function PixelCanvas() {
 
                 updateMarker(px, py, color);
                 toast.success("Pixel placed", { duration: 1500 });
+
+                // Update pixel count in shard metadata
+                const shardX = Math.floor(px / SHARD_DIMENSION);
+                const shardY = Math.floor(py / SHARD_DIMENSION);
+                const shardKey = `${shardX},${shardY}`;
+                setShardMetadata(prev => {
+                    const next = new Map(prev);
+                    const existing = next.get(shardKey);
+                    if (existing) {
+                        next.set(shardKey, { ...existing, pixelCount: existing.pixelCount + 1 });
+                    }
+                    return next;
+                });
             }
 
             // Play pop sound
@@ -786,12 +797,25 @@ export function PixelCanvas() {
                 return newSet;
             });
 
+            // Update shard metadata with owner info
+            setShardMetadata(prev => {
+                const next = new Map(prev);
+                next.set(shardKey, {
+                    creator: wallet.publicKey?.toBase58() || 'Unknown',
+                    pixelCount: 0 // Fresh shard has no pixels yet
+                });
+                return next;
+            });
+
             // Add to recent unlocked list
             setRecentUnlockedShards(prev => {
                 const newShard = { x: shardX, y: shardY, timestamp: Date.now() };
                 const filtered = prev.filter(s => !(s.x === shardX && s.y === shardY));
                 return [newShard, ...filtered].slice(0, 50);
             });
+
+            // Show congratulations dialog for first-time unlock
+            actions.start(TourItems.UnlockedShard);
 
         } catch (err) {
             playFail();
@@ -801,7 +825,7 @@ export function PixelCanvas() {
         } finally {
             setUnlockingShard(null);
         }
-    }, [playPop, playUnlock, playFail, initializeShard, estimateShardUnlockCost, checkBalance, refreshBalance, unlockingShard]);
+    }, [playPop, playUnlock, playFail, initializeShard, estimateShardUnlockCost, checkBalance, refreshBalance, unlockingShard, wallet.publicKey]);
 
 
 
@@ -824,8 +848,20 @@ export function PixelCanvas() {
             return;
         }
 
+        if (isReadonly || !sessionKey?.keypair) {
+            // Determine which tour item to show based on state
+            if (!wallet.publicKey) {
+                // No wallet connected - show intro
+                actions.forceStart(TourItems.OnboardingIntro)
+            } else if (!sessionKey?.keypair) {
+                // Wallet connected but no session key
+                actions.forceStart(TourItems.NeedsSessionKey)
+            }
+            return;
+        }
+
         handlePlacePixelAt(selectedPixel.px, selectedPixel.py);
-    }, [selectedPixel, handlePlacePixelAt, isShardLocked, zoomToLockedShard, unlockingShard]);
+    }, [selectedPixel, handlePlacePixelAt, isShardLocked, zoomToLockedShard, unlockingShard, isReadonly, sessionKey, actions, wallet.publicKey]);
 
     // Instant place on map click when zoomed in
     const handleInstantMapClick = useCallback((lat: number, lng: number) => {
@@ -851,15 +887,27 @@ export function PixelCanvas() {
 
         // Check if we should instant place or just select
         const isZoomedIn = currentZoom >= PIXEL_SELECT_ZOOM;
+        const missingAuth = isReadonly || !sessionKey?.keypair;
 
-        if (isZoomedIn && !isReadonly) {
+        if (isZoomedIn && !missingAuth) {
             // Instant place!
             handlePlacePixelAt(px, py);
         }
 
         // Update selection and zoom in if needed
         handleMapClick(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
-    }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard, unlockingShard, isReadonly]);
+
+        if (missingAuth) {
+            // Determine which tour item to show based on state
+            if (!wallet.publicKey) {
+                // No wallet connected - show intro
+                actions.forceStart(TourItems.OnboardingIntro)
+            } else if (!sessionKey?.keypair) {
+                // Wallet connected but no session key
+                actions.forceStart(TourItems.NeedsSessionKey)
+            }
+        }
+    }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard, unlockingShard, isReadonly, actions, sessionKey, wallet.publicKey]);
 
     // Keep track of unlocking shard in a ref to use in event callbacks without re-subscribing
     const unlockingShardRef = useRef(unlockingShard);
@@ -1057,26 +1105,48 @@ export function PixelCanvas() {
                 </button>
                 <button
                     onClick={() => {
-                        if (localPixels.length > 0 && mapRef.current) {
+                        const shardsArray = Array.from(unlockedShards).map(key => {
+                            const [x, y] = key.split(',').map(Number);
+                            return { x: x ?? 0, y: y ?? 0 };
+                        });
+
+                        if (shardsArray.length > 0 && mapRef.current) {
                             const bounds = mapRef.current.getBounds();
 
-                            // Filter placed pixels that are NOT in the current view
-                            const pixelsOutsideView = localPixels.filter(pixel => {
-                                const { lat, lon } = globalPxToLatLon(pixel.px, pixel.py);
+                            // Filter shards that are NOT in the current view
+                            const shardsOutsideView = shardsArray.filter(shard => {
+                                const centerPx = (shard.x + 0.5) * SHARD_DIMENSION;
+                                const centerPy = (shard.y + 0.5) * SHARD_DIMENSION;
+                                const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
                                 return !bounds.contains([lat, lon]);
                             });
 
-                            // Pick from pixels outside view, or any pixel if all are visible
-                            const targetPixels = pixelsOutsideView.length > 0 ? pixelsOutsideView : localPixels;
-                            const randomPixel = targetPixels[Math.floor(Math.random() * targetPixels.length)];
-                            if (!randomPixel) return;
-                            focusOnPixel(randomPixel.px, randomPixel.py);
-                        } else if (localPixels.length === 0) {
-                            alert('No pixels placed yet. Be the first to place a pixel!');
+                            // Pick from shards outside view, or any shard if all are visible
+                            const targetShards = shardsOutsideView.length > 0 ? shardsOutsideView : shardsArray;
+                            const randomShard = targetShards[Math.floor(Math.random() * targetShards.length)];
+                            
+                            if (!randomShard) return;
+                            
+                            // Focus on shard center
+                            const centerPx = (randomShard.x + 0.5) * SHARD_DIMENSION;
+                            const centerPy = (randomShard.y + 0.5) * SHARD_DIMENSION;
+                            const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
+                            
+                            mapRef.current.setView([lat, lon], 13, { animate: true });
+                            
+                            // Highlight the shard
+                            setTimeout(() => {
+                                setHighlightShard({ x: randomShard.x, y: randomShard.y });
+                                // Clear after animation
+                                setTimeout(() => setHighlightShard(null), 1500);
+                            }, 300);
+
+                        } else if (shardsArray.length === 0) {
+                            toast.error('No shards unlocked yet. Be the first to unlock a shard!');
                         }
                     }}
                     className="w-8 h-8 bg-white rounded-lg shadow-lg flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors"
-                    title="Explore placed pixels"
+                    title="Explore unlocked shards"
                 >
                     <CompassIcon />
                 </button>
@@ -1088,13 +1158,7 @@ export function PixelCanvas() {
                         }`}
                     title="Toggle shard grid"
                 >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <line x1="3" y1="9" x2="21" y2="9" />
-                        <line x1="3" y1="15" x2="21" y2="15" />
-                        <line x1="9" y1="3" x2="9" y2="21" />
-                        <line x1="15" y1="3" x2="15" y2="21" />
-                    </svg>
+                    <ScanEye className='w-5 h-5'/>
                 </button>
             </div>
 
@@ -1165,7 +1229,7 @@ export function PixelCanvas() {
                         }`}
                     title="Toggle recent pixels"
                 >
-                    <GridIcon />
+                    <LayoutGrid className='w-4 h-4' />
                     <span>{placedPixelCount.toLocaleString()}</span>
                 </button>
 
@@ -1388,7 +1452,16 @@ export function PixelCanvas() {
             </div>
 
             {/* Mute Button */}
-            <div className="absolute bottom-6 right-6 z-50 print:hidden">
+            <div className="absolute bottom-6 right-6 z-50 print:hidden flex flex-col gap-2">
+                <Button
+                    variant="secondary"
+                    size="icon"
+                    // onClick={toggleMute}
+                    className="bg-white/90 backdrop-blur shadow-lg hover:bg-white rounded-full h-10 w-10 border border-slate-200"
+                    title="Settings"
+                >
+                    <Settings className="h-5 w-5 text-slate-500" />
+                </Button>
                 <Button
                     variant="secondary"
                     size="icon"

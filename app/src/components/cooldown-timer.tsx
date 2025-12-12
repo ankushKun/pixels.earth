@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useTourActions, TourItems } from '../hooks/use-tour';
 
 interface CooldownTimerProps {
     pixelsPlaced: number;
@@ -11,6 +12,7 @@ interface CooldownTimerProps {
 export function CooldownTimer({ pixelsPlaced, maxPixels, lastPlaceTimestamp, cooldownPeriod }: CooldownTimerProps) {
     const [timeLeft, setTimeLeft] = useState(0);
     const [effectivePlaced, setEffectivePlaced] = useState(pixelsPlaced);
+    const actions = useTourActions();
 
     useEffect(() => {
         const update = () => {
@@ -22,6 +24,8 @@ export function CooldownTimer({ pixelsPlaced, maxPixels, lastPlaceTimestamp, coo
                 if (elapsed >= cooldownPeriod) {
                     if (timeLeft > 0) {
                         toast.success("Cooldown over! You can start placing pixels again.");
+                        // Show first-time cooldown complete explanation
+                        actions.start(TourItems.CooldownCompleted);
                     }
                     setTimeLeft(0);
                     setEffectivePlaced(0);

@@ -129,8 +129,9 @@ function WelcomePopup({ onConnect, onBrowse }: WelcomePopupProps) {
             ) : (
                 <>
                     <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 shadow-sm relative group">
-                        <div className="absolute inset-0 rounded-full border border-indigo-100 animate-ping opacity-20 duration-[3s]"></div>
-                        <PixelIcon />
+                        {/* <div className="absolute inset-0 rounded-full border border-indigo-100 animate-ping opacity-20 duration-[3s]"></div> */}
+                        {/* <PixelIcon /> */}
+                        <img src="/icon.png" alt="" />
                     </div>
                     
                     <h1 className="text-[1.75rem] font-extrabold text-slate-900 mb-2 tracking-tight">

@@ -69,8 +69,24 @@ export function useGunPresence() {
     const { publicKey } = useWallet();
     const [presence, setPresence] = useState<Record<string, PresenceUser>>({});
     const gunRef = useRef<any>(null);
-    const myIdRef = useRef<string>(Math.random().toString(36).substr(2, 9));
     const lastBroadcastRef = useRef<number>(0);
+    
+    // Lazy init for anonymous ID
+    const myIdRef = useRef<string>("");
+    if (!myIdRef.current) {
+         try {
+            const stored = sessionStorage.getItem('magicplace-anon-id');
+            if (stored) {
+                myIdRef.current = stored;
+            } else {
+                const newId = Math.random().toString(36).substr(2, 9);
+                sessionStorage.setItem('magicplace-anon-id', newId);
+                myIdRef.current = newId;
+            }
+        } catch {
+            myIdRef.current = Math.random().toString(36).substr(2, 9);
+        }
+    }
 
     // Initialize Gun and subscribe
     useEffect(() => {
@@ -87,6 +103,14 @@ export function useGunPresence() {
             
             presenceNode.map().on((data: any, id: string) => {
                 if (!data || typeof data !== 'object' || !data.lastSeen) return;
+
+                // Filter out stale users immediately
+                const now = Date.now();
+                if (now - data.lastSeen > INACTIVE_THRESHOLD_MS) {
+                    // actively cleanup old data from the network
+                    gunRef.current.get(PRESENCE_KEY).get(id).put(null);
+                    return;
+                }
 
                 setPresence(prev => {
                     // Skip if we already have newer data
@@ -158,6 +182,10 @@ export function useGunPresence() {
                 Object.keys(next).forEach(key => {
                     const user = next[key];
                     if (user && now - user.lastSeen > INACTIVE_THRESHOLD_MS) {
+                        // Remove from Gun network as well
+                        if (gunRef.current) {
+                            gunRef.current.get(PRESENCE_KEY).get(key).put(null);
+                        }
                         delete next[key];
                         changed = true;
                     }

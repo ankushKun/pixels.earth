@@ -20,6 +20,8 @@ interface SessionBalanceContextType {
   checkBalance: (amountNeeded: number, reason?: string, onSuccess?: () => void) => Promise<boolean>;
   requestTopup: (amountNeeded: number, reason?: string) => void;
   topup: (amount: number) => Promise<void>;
+  topupRequest: TopupRequest | null;
+  clearTopupRequest: () => void;
 }
 
 // ============================================================================
@@ -32,6 +34,8 @@ const SessionBalanceContext = createContext<SessionBalanceContextType>({
   checkBalance: async () => true,
   requestTopup: () => { },
   topup: async () => { },
+  topupRequest: null,
+  clearTopupRequest: () => { },
 });
 
 export function useSessionBalance() {
@@ -288,20 +292,22 @@ export function SessionBalanceProvider({ children }: { children: ReactNode }) {
     }
   }, [wallet, sessionKey.publicKey, connection, refreshBalance, topupRequest]);
 
-  return (
-    <SessionBalanceContext.Provider value={{ balance, refreshBalance, checkBalance, requestTopup, topup: handleTopup }}>
-      {children}
+  // Clear topup request
+  const clearTopupRequest = useCallback(() => {
+    setTopupRequest(null);
+  }, []);
 
-      {/* Low Balance Popup */}
-      {topupRequest && balance !== null && (
-        <LowBalancePopup
-          amountNeeded={topupRequest.amountNeeded}
-          reason={topupRequest.reason}
-          currentBalance={balance}
-          onTopup={handleTopup}
-          onClose={() => setTopupRequest(null)}
-        />
-      )}
+  return (
+    <SessionBalanceContext.Provider value={{ 
+      balance, 
+      refreshBalance, 
+      checkBalance, 
+      requestTopup, 
+      topup: handleTopup,
+      topupRequest,
+      clearTopupRequest
+    }}>
+      {children}
     </SessionBalanceContext.Provider>
   );
 }

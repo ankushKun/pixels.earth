@@ -352,7 +352,7 @@ export function ShardGridOverlay({ visible, onAggregatedChange, onVisibleShardsC
             map.off('moveend', updateGridAndVisibility);
             map.off('zoomend', updateGridAndVisibility);
         };
-    }, [map, visible, onAggregatedChange, onVisibleShardsChange]);
+    }, [map, visible, onAggregatedChange, onVisibleShardsChange, unlockedShards, shardMetadata]);
 
     // Refs for stable state access without restarting effects
     const activeOverlayRef = useRef<L.ImageOverlay | null>(null);
