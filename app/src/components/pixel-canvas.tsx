@@ -758,7 +758,39 @@ export function PixelCanvas() {
                     throw new Error("Invalid color selected");
                 }
 
-                await placePixelOnER(px, py, colorIndex);
+                // Helper function to place pixel with auto-redelegate on failure
+                const placeWithRedelegation = async () => {
+                    try {
+                        await placePixelOnER(px, py, colorIndex);
+                    } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        
+                        // If delegation issue, try to re-delegate and retry once
+                        if (errMsg.includes("InvalidWritableAccount") || errMsg.includes("AccountNotFound")) {
+                            console.warn("[placePixel] Delegation issue detected, attempting re-delegation...");
+                            toast.loading("Re-delegating shard...", { duration: 3000 });
+                            
+                            const shardX = Math.floor(px / SHARD_DIMENSION);
+                            const shardY = Math.floor(py / SHARD_DIMENSION);
+                            
+                            try {
+                                // initializeShard will check state and delegate if needed
+                                await initializeShard(shardX, shardY);
+                                console.log("[placePixel] Re-delegation successful, retrying pixel placement...");
+                                
+                                // Retry pixel placement
+                                await placePixelOnER(px, py, colorIndex);
+                            } catch (delegateErr) {
+                                console.error("[placePixel] Re-delegation failed:", delegateErr);
+                                throw new Error(`Re-delegation failed: ${delegateErr instanceof Error ? delegateErr.message : String(delegateErr)}`);
+                            }
+                        } else {
+                            throw e; // Non-delegation error, propagate
+                        }
+                    }
+                };
+
+                await placeWithRedelegation();
 
                 // Optimistic Cooldown Update
                 setCooldownState(prev => {
@@ -815,7 +847,7 @@ export function PixelCanvas() {
             console.error("Failed to place pixel:", e);
             toast.error("Failed to place pixel: " + (e instanceof Error ? e.message : String(e)));
         }
-    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard, cooldownState]);
+    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard, cooldownState, initializeShard]);
 
 
 

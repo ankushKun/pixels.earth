@@ -931,6 +931,7 @@ export function useMagicplaceProgram() {
 
     /**
      * Delegate a shard using session key (no wallet popup needed)
+     * Includes retry logic for transient failures
      */
     const delegateShardWithSession = useCallback(async (shardX: number, shardY: number): Promise<string> => {
         if (!sessionProgram || !sessionKey.keypair) {
@@ -944,59 +945,90 @@ export function useMagicplaceProgram() {
         setIsLoading(true);
         setError(null);
 
-        try {
-            const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
-                microLamports: PRIORITY_FEE_MICRO_LAMPORTS,
-            });
+        const maxAttempts = 3;
+        let lastError: Error | null = null;
 
-            // MagicBlock devnet validators - use Asia region by default
-            // Asia: MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57
-            // EU: MEUGGrYPxKk17hCr7wpT6s8dtNokZj5U2L57vjYMS8e
-            const DEVNET_VALIDATOR = new PublicKey("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
-            
-            // Build instruction using session program, sign with session key
-            const delegateIx = await sessionProgram.methods
-                .delegateShard(shardX, shardY)
-                .accounts({
-                    authority: sessionKey.keypair.publicKey,
-                })
-                .remainingAccounts([
-                    { pubkey: DEVNET_VALIDATOR, isSigner: false, isWritable: false }
-                ])
-                .instruction();
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`[delegateShardWithSession] Attempt ${attempt}/${maxAttempts} for shard (${shardX}, ${shardY})`);
+                
+                const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
+                    microLamports: PRIORITY_FEE_MICRO_LAMPORTS,
+                });
 
-            const tx = new Transaction()
-                .add(priorityFeeIx)
-                .add(delegateIx);
+                // MagicBlock devnet validators - use Asia region by default
+                // Asia: MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57
+                // EU: MEUGGrYPxKk17hCr7wpT6s8dtNokZj5U2L57vjYMS8e
+                const DEVNET_VALIDATOR = new PublicKey("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
+                
+                // Build instruction using session program, sign with session key
+                const delegateIx = await sessionProgram.methods
+                    .delegateShard(shardX, shardY)
+                    .accounts({
+                        authority: sessionKey.keypair.publicKey,
+                    })
+                    .remainingAccounts([
+                        { pubkey: DEVNET_VALIDATOR, isSigner: false, isWritable: false }
+                    ])
+                    .instruction();
 
-            tx.feePayer = sessionKey.keypair.publicKey;
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-            tx.recentBlockhash = blockhash;
-            tx.sign(sessionKey.keypair);
+                const tx = new Transaction()
+                    .add(priorityFeeIx)
+                    .add(delegateIx);
 
-            const txSig = await connection.sendRawTransaction(tx.serialize(), {
-                skipPreflight: true,
-            });
-            
-            const confirmation = await connection.confirmTransaction(
-                { signature: txSig, blockhash, lastValidBlockHeight },
-                "confirmed"
-            );
-            
-            // Check if transaction actually succeeded
-            if (confirmation.value.err) {
-                console.error("Delegate shard transaction failed:", confirmation.value.err);
-                throw new Error(`Delegation failed: ${JSON.stringify(confirmation.value.err)}`);
+                tx.feePayer = sessionKey.keypair.publicKey;
+                const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+                tx.recentBlockhash = blockhash;
+                tx.sign(sessionKey.keypair);
+
+                const txSig = await connection.sendRawTransaction(tx.serialize(), {
+                    skipPreflight: true,
+                });
+                
+                const confirmation = await connection.confirmTransaction(
+                    { signature: txSig, blockhash, lastValidBlockHeight },
+                    "confirmed"
+                );
+                
+                // Check if transaction actually succeeded
+                if (confirmation.value.err) {
+                    const errStr = JSON.stringify(confirmation.value.err);
+                    console.error(`[delegateShardWithSession] Transaction failed on attempt ${attempt}:`, errStr);
+                    throw new Error(`Delegation failed: ${errStr}`);
+                }
+
+                console.log(`[delegateShardWithSession] SUCCESS on attempt ${attempt}: ${txSig}`);
+                return txSig;
+            } catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
+                const errMsg = lastError.message;
+                
+                // Check if this is a retryable error
+                const isRetryable = 
+                    errMsg.includes("InvalidWritableAccount") ||
+                    errMsg.includes("AccountNotFound") ||
+                    errMsg.includes("blockhash") ||
+                    errMsg.includes("timeout") ||
+                    errMsg.includes("failed to send");
+                
+                if (isRetryable && attempt < maxAttempts) {
+                    console.warn(`[delegateShardWithSession] Retryable error on attempt ${attempt}: ${errMsg}`);
+                    // Wait before retry (2s, then 4s for exponential backoff)
+                    await new Promise(r => setTimeout(r, attempt * 2000));
+                    continue;
+                }
+                
+                // Non-retryable error or max attempts reached
+                console.error(`[delegateShardWithSession] Failed after ${attempt} attempts:`, errMsg);
+                const message = lastError.message || "Failed to delegate shard";
+                setError(message);
+                throw lastError;
             }
-
-            return txSig;
-        } catch (err) {
-            const message = err instanceof Error ? err.message : "Failed to delegate shard";
-            setError(message);
-            throw err;
-        } finally {
-            setIsLoading(false);
         }
+
+        // Should never reach here, but typescript needs it
+        setIsLoading(false);
+        throw lastError || new Error("Delegation failed after max attempts");
     }, [connection, sessionProgram, sessionKey.keypair]);
 
     /**
