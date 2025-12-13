@@ -13,7 +13,7 @@ export const DEFAULT_MAP_CENTER: [number, number] = [37.757, -122.4376]; // San 
 export const DEFAULT_MAP_ZOOM = 7;
 export const MIN_MAP_ZOOM = 3;
 export const MAX_MAP_ZOOM = 18;
-export const PIXEL_SELECT_ZOOM = 15; // Zoom level when clicking a pixel
+export const PIXEL_SELECT_ZOOM = 14; // Zoom level when clicking a pixel
 
 // Throttling
 export const MAP_MOVE_THROTTLE_MS = 500;
