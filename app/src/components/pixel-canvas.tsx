@@ -1230,7 +1230,7 @@ export function PixelCanvas() {
 
             {/* Shard Grid Zoom Hint */}
             {showShardGrid && shardsAggregated && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
+                <div className="absolute top-15 left-1/2 -translate-x-1/2 z-50">
                     <div className="bg-blue-500/95 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="11" cy="11" r="8" />
@@ -1243,7 +1243,7 @@ export function PixelCanvas() {
                 </div>
             )}
 
-            {!showShardGrid && shardsAggregated && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 ">
+            {!showShardGrid && shardsAggregated && <div className="absolute top-15 left-1/2 -translate-x-1/2 z-50 ">
                 <div className="bg-blue-500/95 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="8" />
@@ -1252,6 +1252,18 @@ export function PixelCanvas() {
                         <line x1="8" y1="11" x2="14" y2="11" />
                     </svg>
                     <span>Zoom in to see pixels</span>
+                </div>
+            </div>}
+
+            {!showShardGrid && !shardsAggregated && currentZoom < PIXEL_SELECT_ZOOM && <div className="absolute top-15 left-1/2 -translate-x-1/2 z-50 ">
+                <div className="bg-emerald-500/95 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        <line x1="11" y1="8" x2="11" y2="14" />
+                        <line x1="8" y1="11" x2="14" y2="11" />
+                    </svg>
+                    <span>Zoom in to place pixels</span>
                 </div>
             </div>}
 
