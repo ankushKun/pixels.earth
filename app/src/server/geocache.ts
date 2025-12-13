@@ -1,66 +1,22 @@
 /**
- * Server-side reverse geocoding with persistent database cache
- * Uses the same logic as the frontend but stores cache in SQLite
+ * Server-side reverse geocoding with SQLite database cache
+ * Uses shared core logic from geocode-core.ts
  */
 
 import db from "./db";
 import { globalPxToLatLon } from "../lib/projection";
+import {
+    LAND_GRID_PRECISION,
+    OCEAN_GRID_PRECISION,
+    MIN_REQUEST_INTERVAL,
+    getGridKey,
+    getNearbyGridKeys,
+    fetchLocationFromAPI,
+    FALLBACK_LOCATION,
+} from "../lib/geocode-core";
 
-// Grid precision for caching (in degrees)
-const LAND_GRID_PRECISION = 0.1;  // ~11km at equator
-const OCEAN_GRID_PRECISION = 1.0; // ~111km at equator
-
-// Rate limiting
+// Rate limiting state
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1100; // 1.1 seconds
-
-interface NominatimResponse {
-    address?: {
-        city?: string;
-        town?: string;
-        village?: string;
-        hamlet?: string;
-        municipality?: string;
-        county?: string;
-        state?: string;
-        country?: string;
-        ocean?: string;
-        sea?: string;
-        bay?: string;
-        water?: string;
-    };
-    display_name?: string;
-    name?: string;
-    type?: string;
-    error?: string;
-}
-
-/**
- * Get grid-based cache key
- */
-function getGridKey(lat: number, lon: number, precision: number = LAND_GRID_PRECISION): string {
-    const gridLat = Math.round(lat / precision) * precision;
-    const gridLon = Math.round(lon / precision) * precision;
-    return `${gridLat.toFixed(2)},${gridLon.toFixed(2)}`;
-}
-
-/**
- * Get all nearby grid keys (current + 8 surrounding)
- */
-function getNearbyGridKeys(lat: number, lon: number, precision: number = LAND_GRID_PRECISION): string[] {
-    const keys: string[] = [];
-    const offsets = [-precision, 0, precision];
-    
-    for (const latOffset of offsets) {
-        for (const lonOffset of offsets) {
-            const gridLat = Math.round((lat + latOffset) / precision) * precision;
-            const gridLon = Math.round((lon + lonOffset) / precision) * precision;
-            keys.push(`${gridLat.toFixed(2)},${gridLon.toFixed(2)}`);
-        }
-    }
-    
-    return keys;
-}
 
 /**
  * Check database cache for nearby location
@@ -122,31 +78,8 @@ async function waitForRateLimit(): Promise<void> {
 }
 
 /**
- * Get ocean name based on coordinates (fallback)
- */
-function getOceanName(lat: number, lon: number): string {
-    let oceanName = 'International Waters';
-    
-    if (lon > 100 || lon < -100) {
-        oceanName = lat > 0 ? 'North Pacific Ocean' : 'South Pacific Ocean';
-    } else if (lon > -80 && lon < 0) {
-        oceanName = lat > 0 ? 'North Atlantic Ocean' : 'South Atlantic Ocean';
-    } else if (lon > 20 && lon < 100 && lat < 25) {
-        oceanName = 'Indian Ocean';
-    } else if (lat > 66) {
-        oceanName = 'Arctic Ocean';
-    } else if (lat < -60) {
-        oceanName = 'Southern Ocean';
-    }
-    
-    // Cache with ocean precision
-    cacheLocation(lat, lon, oceanName, true);
-    
-    return oceanName;
-}
-
-/**
- * Get location name for coordinates with persistent caching
+ * Get location name for coordinates with persistent database caching
+ * Uses shared core logic for API calls and formatting
  */
 export async function getLocationNameCached(lat: number, lon: number): Promise<string> {
     // Check database cache first
@@ -158,75 +91,26 @@ export async function getLocationNameCached(lat: number, lon: number): Promise<s
     try {
         await waitForRateLimit();
         
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`;
+        const result = await fetchLocationFromAPI(lat, lon);
         
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'MagicPlace/1.0 (https://magicplace.app)',
-            },
-        });
-        
-        if (!response.ok) {
-            return getOceanName(lat, lon);
+        if (!result) {
+            cacheLocation(lat, lon, FALLBACK_LOCATION, false);
+            return FALLBACK_LOCATION;
         }
         
-        const data: NominatimResponse = await response.json();
-        
-        if (data.error) {
-            return getOceanName(lat, lon);
-        }
-        
-        // Check for water body
-        const waterBodyName = 
-            data.address?.ocean ||
-            data.address?.sea ||
-            data.address?.bay ||
-            data.address?.water ||
-            (data.type === 'ocean' || data.type === 'sea' ? data.name : null);
-        
-        if (waterBodyName) {
-            cacheLocation(lat, lon, waterBodyName, true);
-            return waterBodyName;
-        }
-        
-        if (!data.address) {
-            return getOceanName(lat, lon);
-        }
-        
-        // Get land place name
-        const placeName = 
-            data.address.city ||
-            data.address.town ||
-            data.address.village ||
-            data.address.hamlet ||
-            data.address.municipality ||
-            data.address.county ||
-            data.address.state ||
-            data.address.country ||
-            'Unknown location';
-        
-        // Build location string
-        let locationName = placeName;
-        const country = data.address.country;
-        const region = data.address.state || data.address.county;
-        
-        if (country === 'United States' && region) {
-            locationName = `${placeName}, ${region}`;
-        } else if (country && placeName !== country) {
-            locationName = `${placeName}, ${country}`;
-        }
-        
-        cacheLocation(lat, lon, locationName, false);
-        return locationName;
+        // Cache and return the formatted display name
+        cacheLocation(lat, lon, result.displayName, result.placeInfo.isWaterBody);
+        return result.displayName;
         
     } catch (error) {
         console.warn('Geocoding failed:', error);
-        return getOceanName(lat, lon);
+        cacheLocation(lat, lon, FALLBACK_LOCATION, false);
+        return FALLBACK_LOCATION;
     }
 }
 
 /**
- * Get location name for pixel coordinates (convenience function)
+ * Get location name for pixel coordinates
  */
 export async function getLocationForPixel(px: number, py: number): Promise<string> {
     const { lat, lon } = globalPxToLatLon(px, py);
@@ -234,7 +118,7 @@ export async function getLocationForPixel(px: number, py: number): Promise<strin
 }
 
 /**
- * Get location name for shard coordinates (convenience function)
+ * Get location name for shard coordinates (uses shard center)
  */
 export async function getLocationForShard(shardX: number, shardY: number, shardDimension: number): Promise<string> {
     const centerPx = (shardX + 0.5) * shardDimension;
