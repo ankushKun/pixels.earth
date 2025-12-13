@@ -102,10 +102,8 @@ export async function getLocationNameCached(lat: number, lon: number): Promise<s
             const result = await fetchLocationFromAPI(lat, lon);
             
             if (!result) {
-                // API returned null but didn't throw - this is a legitimate "no data" case
-                // (e.g., API returned an error response for unmapped coordinates)
-                // Cache the fallback for these cases
-                cacheLocation(lat, lon, FALLBACK_LOCATION, false);
+                // API returned null but didn't throw - this means geocoding couldn't find data
+                // DON'T cache the fallback - let it retry next time in case it was a transient issue
                 return FALLBACK_LOCATION;
             }
             
@@ -140,8 +138,8 @@ export async function getLocationNameCached(lat: number, lon: number): Promise<s
                 throw new Error(`Geocoding temporarily unavailable: ${error?.message || 'network error'}`);
             }
             
-            // For non-network errors (e.g., parsing errors), cache the fallback
-            cacheLocation(lat, lon, FALLBACK_LOCATION, false);
+            // For non-network errors (e.g., parsing errors), still don't cache the fallback
+            // This allows retries on subsequent requests
             return FALLBACK_LOCATION;
         }
     }
