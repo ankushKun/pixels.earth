@@ -267,7 +267,7 @@ export function PixelCanvas() {
         // Gun Presence - broadcast GPS coordinates directly
         updateMyPresence(lat, lng);
     }, [handleMapHover, selectedColor, updateMyPresence]);
-    const [showRecentPixels, setShowRecentPixels] = useState(true);
+    const [showRecentPixels, setShowRecentPixels] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
     const [isToolbarExpanded, setIsToolbarExpanded] = useState(true);
     const [currentZoom, setCurrentZoom] = useState(DEFAULT_MAP_ZOOM);
     const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
@@ -275,7 +275,7 @@ export function PixelCanvas() {
     const [showShardGrid, setShowShardGrid] = useState(false);
     const [shardsAggregated, setShardsAggregated] = useState(false);
     const [visibleShards, setVisibleShards] = useState<{ x: number; y: number }[]>([]);
-    const [showRecentShards, setShowRecentShards] = useState(true);
+    const [showRecentShards, setShowRecentShards] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
     const [lockedShardAlert, setLockedShardAlert] = useState<{ x: number; y: number } | null>(null);
     const [unlockedShards, setUnlockedShards] = useState<Set<string>>(new Set());
     const [recentUnlockedShards, setRecentUnlockedShards] = useState<{ x: number; y: number; timestamp: number }[]>([]);
@@ -1082,7 +1082,7 @@ export function PixelCanvas() {
     }, [selectedPixel]);
 
     return (
-        <div className="h-screen w-screen overflow-hidden bg-slate-900 relative">
+        <div className="h-dvh w-screen overflow-hidden bg-slate-900 relative">
             {/* Full-screen Map */}
             <MapContainer
                 center={initialCenter}
@@ -1273,7 +1273,7 @@ export function PixelCanvas() {
             <div className="absolute top-4 right-4 flex items-center gap-3 z-40">
 
                 {/* show currently live users here */}
-                <div className="flex flex-row flex-wrap items-center gap-2 mr-2">
+                <div className="hidden md:flex flex-row flex-wrap items-center gap-2 mr-2">
                     {(() => {
                         const otherUsers = onlineUsers.filter(u => u.id !== myId);
                         return (
@@ -1314,7 +1314,7 @@ export function PixelCanvas() {
                     title="Toggle recent shards"
                 >
                     <Unlock className="w-4 h-4" />
-                    <span>{formatCompactNumber(unlockedShards.size)}</span>
+                    <span className="hidden sm:inline">{formatCompactNumber(unlockedShards.size)}</span>
                 </button>
                 {/* Pixels Count - Toggle for Recent Pixels */}
                 <button
@@ -1326,7 +1326,7 @@ export function PixelCanvas() {
                     title="Toggle recent pixels"
                 >
                     <LayoutGrid className='w-4 h-4' />
-                    <span>{formatCompactNumber(placedPixelCount)}</span>
+                    <span className="hidden sm:inline">{formatCompactNumber(placedPixelCount)}</span>
                 </button>
 
                 <WalletConnect onMenuOpenChange={setIsWalletMenuOpen} />
@@ -1495,7 +1495,7 @@ export function PixelCanvas() {
                         {isToolbarExpanded && !isReadonly && (
                             <div className="p-4">
                                 {/* Two rows of 16 colors each */}
-                                <div className="grid grid-cols-15 gap-1.5">
+                                <div className="grid grid-cols-8 sm:grid-cols-15 gap-1.5">
                                     {
                                         PRESET_COLORS.map((color) => {
                                             return <Color key={color} color={color} selected={selectedColor === color} onClick={() => setSelectedColor(color)} />
