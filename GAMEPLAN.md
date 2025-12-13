@@ -1,39 +1,65 @@
 # pixels.earth
 
-- The entire earths maps is a pixel grid of 2^19 x 2^19 pixels, that's 524,288 x 524,288 = 274,625,296 pixels total.
-- The entire map is divided into 128x128 pixel shards, so there are 4096 x 4096 = 16,777,216 total shards.
-- Every shard is an account on solana (8kb per shard = roughly 0.05 SOL cost)
-- Unlocking a shard means the user paid and initialized the account, and they now own the shard. (account init fee that goes to the network + a fractional platform fee that goes to the smart contract)
-- The shards are basically users territory, they can draw whatever they want on it freely without any limits
-- Everytime someone else places pixels on your territory, you recieve tokens (1 token / 10 pixels placed)
-- When drawing on other peoples shards, there is a cool down of 30 seconds after every 100 pixels placed
-- Players can bypass this cooldown by paying a small fee to the shard owner (either in SOL or in tokens received)
-- After paying fees, there will be no cooldown for 3 hours
-- Dead shards: shards without activity can be reclaimed by other active users for free or with a much cheaper fee than a new shard
-- Functionality to upload an image and the app converts it into pixels and places them on the map (premium feature?)
-- You might have drawn something super cool on your shard (territory), but someone else starts drawing on it, to mess it up. You will have to defend your art by restoring it and undoing the mess. You will receive notifications when someone draws on your territory
-- You earn xp for placing pixels on other peoples territories
-- More XP = lesser cooldown
-- Owning more shards earns you badges
-  -  Rookie: 1 shard
-  -  Landlord: 50 shards
-  -  Builder: 100 shards
-  -  Architect: 250 shards
-  -  Collector: 500 shards
-  -  Final shard boss: 1000 shards
--  There will be leaderboards for different stuff
-   -  Most shards owned
-   -  Most pixels placed (in enemy territory)
-   -  Most xp earned
-   -  Most earned through fees
--  Profile page:
-   -  Showcase artwork (select range of pixels on map to show), your profile page will show the live state of those pixels (someone could have destroyed your art)
-   -  artwork turned into live trading cards (like harry potter cards where the character may have gone and returned later)
-- Factions
-  - Blue vs Red vs Green vs Yellow factions
-  - Faction wars across continents
-  - Weekly challenges:
-    - Most pixels placed by factions
-    - Most earned by factions
-    - etc
-  - reference: ingress
+## Core Specs
+
+- The entire earth's map is a pixel grid of **2^19 × 2^19 pixels** = 524,288 × 524,288 = **274 billion pixels** total.
+- The map is divided into **90×90 pixel shards** = 5,826 × 5,826 = **~34 million shards**.
+- Every shard is an account on Solana (~8KB per shard ≈ **0.057 SOL** rent-exempt cost).
+- **8-bit color depth** = 255 available colors (index 0 = transparent/erased).
+
+## Shard Ownership
+
+- Unlocking a shard means the user paid and initialized the account - they now **own the shard**.
+  - Account init fee goes to the network
+  - Fractional platform fee goes to the smart contract
+- Shards are the user's **territory** - they can draw freely without any limits or cooldowns.
+- **Earn**: When someone else places pixels on your territory, you receive tokens (1 token / 10 pixels placed).
+
+## Cooldowns & Premiums
+
+- Drawing on other people's shards = **cooldown of 30 seconds** after every **50 pixels** placed.
+- Players can bypass cooldown by paying a small fee to the shard owner (in SOL or tokens).
+- After paying fees, no cooldown for **3 hours**.
+
+## Future Features (Not Yet Implemented)
+
+### Dead Shards
+- Shards without activity can be reclaimed by active users for free or cheaper fee.
+
+### Image Upload (Premium)
+- Upload an image → converts to pixels → places on map.
+
+### Territory Defense
+- Notifications when someone draws on your territory.
+- Defend your art by restoring/undoing mess.
+
+### XP System
+- Earn XP for placing pixels on others' territories.
+- More XP = lesser cooldown.
+
+### Shard Badges
+- 🟢 **Rookie**: 10 shard
+- 🏠 **Landlord**: 100 shards
+- 🏗️ **Builder**: 1000 shards
+- 🏛️ **Architect**: 2500 shards
+- 💎 **Collector**: 5000 shards
+- 👑 **Final Shard Boss**: 10000 shards
+
+### Leaderboards
+- Most shards owned
+- Most pixels placed (in enemy territory)
+- Most XP earned
+- Most earned through fees
+
+### Profile Page
+- Showcase artwork (select range of pixels on map)
+- Live state display (someone could destroy your art!)
+- Artwork as **live trading cards** (like Harry Potter cards)
+
+### Factions
+- Blue vs Red vs Green vs Yellow factions
+- Faction wars across continents
+- Weekly challenges:
+  - Most pixels placed by faction
+  - Most earned by faction
+- Reference: Ingress
