@@ -10,7 +10,7 @@ export const LAND_GRID_PRECISION = 0.02;
 export const OCEAN_GRID_PRECISION = 1.0;
 
 // Rate limiting: Nominatim requires max 1 request per second
-export const MIN_REQUEST_INTERVAL = 1100; // 1.1 seconds to be safe
+export const MIN_REQUEST_INTERVAL = 650; // Reduced to 0.65s for better UX
 
 export interface NominatimResponse {
     address?: {
@@ -163,45 +163,40 @@ export function formatLocationName(data: NominatimResponse): { displayName: stri
 /**
  * Make a reverse geocoding API call to Nominatim
  * Falls back to ocean name detection for water coordinates
+ * Throws on network errors so caller can handle retries
  */
 export async function fetchLocationFromAPI(lat: number, lon: number): Promise<{ displayName: string; placeInfo: PlaceInfo } | null> {
-    try {
-        // Use zoom=18 for maximum detail (city/town level)
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
-        
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'MagicPlace/1.0 (https://magicplace.app)',
-            },
-        });
-        
-        if (!response.ok) {
-            // Try ocean name fallback for water coordinates
-            const oceanName = getOceanName(lat, lon);
-            return {
-                displayName: oceanName,
-                placeInfo: createOceanPlaceInfo(oceanName),
-            };
-        }
-        
-        const data: NominatimResponse = await response.json();
-        
-        if (data.error) {
-            // Nominatim returned an error (likely no data for this location)
-            // Try ocean name fallback
-            const oceanName = getOceanName(lat, lon);
-            return {
-                displayName: oceanName,
-                placeInfo: createOceanPlaceInfo(oceanName),
-            };
-        }
-        
-        return formatLocationName(data);
-    } catch (error) {
-        console.warn('Reverse geocoding API call failed:', error);
-        // Return null to let caller handle fallback
-        return null;
+    // Use zoom=18 for maximum detail (city/town level)
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+    
+    const response = await fetch(url, {
+        headers: {
+            'User-Agent': 'MagicPlace/1.0 (https://magicplace.app)',
+        },
+    });
+    
+    if (!response.ok) {
+        // Try ocean name fallback for water coordinates
+        const oceanName = getOceanName(lat, lon);
+        return {
+            displayName: oceanName,
+            placeInfo: createOceanPlaceInfo(oceanName),
+        };
     }
+    
+    const data: NominatimResponse = await response.json();
+    
+    if (data.error) {
+        // Nominatim returned an error (likely no data for this location)
+        // Try ocean name fallback
+        const oceanName = getOceanName(lat, lon);
+        return {
+            displayName: oceanName,
+            placeInfo: createOceanPlaceInfo(oceanName),
+        };
+    }
+    
+    return formatLocationName(data);
 }
 
 /**

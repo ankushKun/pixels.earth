@@ -65,60 +65,35 @@ function saveCacheToStorage(): void {
 // Initialize cache from storage
 loadCacheFromStorage();
 
-// Rate limiting state
-let lastRequestTime = 0;
-
 /**
  * Check if a cached location is nearby - returns cached value if found
  * Checks both in-memory cache and localStorage-loaded cache
  */
 function findNearbyCache(lat: number, lon: number): { place: PlaceInfo | null; name: string | null } {
-    // First check the exact grid cell
     const exactKey = getGridKey(lat, lon);
     if (geocodeCache.has(exactKey)) {
-        return { 
-            place: geocodeCache.get(exactKey)!, 
-            name: locationNameCache.get(exactKey) || null 
-        };
+        return { place: geocodeCache.get(exactKey)!, name: locationNameCache.get(exactKey) || null };
     }
-    // Check locationNameCache even if PlaceInfo isn't cached (loaded from storage)
     if (locationNameCache.has(exactKey)) {
-        return { 
-            place: null, 
-            name: locationNameCache.get(exactKey)! 
-        };
+        return { place: null, name: locationNameCache.get(exactKey)! };
     }
     
-    // Check nearby grid cells
     const nearbyKeys = getNearbyGridKeys(lat, lon);
     for (const key of nearbyKeys) {
         if (geocodeCache.has(key)) {
-            return { 
-                place: geocodeCache.get(key)!, 
-                name: locationNameCache.get(key) || null 
-            };
+            return { place: geocodeCache.get(key)!, name: locationNameCache.get(key) || null };
         }
         if (locationNameCache.has(key)) {
-            return { 
-                place: null, 
-                name: locationNameCache.get(key)! 
-            };
+            return { place: null, name: locationNameCache.get(key)! };
         }
     }
     
-    // Also check with ocean precision for water bodies
     const oceanKey = getGridKey(lat, lon, OCEAN_GRID_PRECISION);
     if (geocodeCache.has(oceanKey)) {
-        return { 
-            place: geocodeCache.get(oceanKey)!, 
-            name: locationNameCache.get(oceanKey) || null 
-        };
+        return { place: geocodeCache.get(oceanKey)!, name: locationNameCache.get(oceanKey) || null };
     }
     if (locationNameCache.has(oceanKey)) {
-        return { 
-            place: null, 
-            name: locationNameCache.get(oceanKey)! 
-        };
+        return { place: null, name: locationNameCache.get(oceanKey)! };
     }
     
     return { place: null, name: null };
@@ -132,21 +107,7 @@ function cacheLocation(lat: number, lon: number, place: PlaceInfo, locationName:
     const key = getGridKey(lat, lon, precision);
     geocodeCache.set(key, place);
     locationNameCache.set(key, locationName);
-    
-    // Persist to localStorage
     saveCacheToStorage();
-}
-
-/**
- * Wait for rate limit if needed
- */
-async function waitForRateLimit(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - lastRequestTime;
-    if (elapsed < MIN_REQUEST_INTERVAL) {
-        await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - elapsed));
-    }
-    lastRequestTime = Date.now();
 }
 
 /**
@@ -160,13 +121,11 @@ export async function reverseGeocode(lat: number, lon: number): Promise<PlaceInf
         return cached.place;
     }
     
+    // NO RATE LIMIT - shoot parallel requests!
     try {
-        await waitForRateLimit();
-        
         const result = await fetchLocationFromAPI(lat, lon);
         
         if (!result) {
-            // DON'T cache the fallback - let it retry next time
             const fallbackPlace: PlaceInfo = {
                 name: FALLBACK_LOCATION,
                 fullName: FALLBACK_LOCATION,
@@ -175,15 +134,14 @@ export async function reverseGeocode(lat: number, lon: number): Promise<PlaceInf
             return fallbackPlace;
         }
         
-        // Cache the result
         cacheLocation(lat, lon, result.placeInfo, result.displayName);
-        
         return result.placeInfo;
     } catch (error) {
         console.warn('Reverse geocoding failed:', error);
         return null;
     }
 }
+
 
 /**
  * Get a short, human-readable location string

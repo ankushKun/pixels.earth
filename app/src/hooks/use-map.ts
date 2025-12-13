@@ -102,14 +102,30 @@ export function useMap() {
             return [pixelData, ...filtered].slice(0, 50);
         });
 
-        // Reverse geocode to get location name and update the pixel
         const { lat, lon } = globalPxToLatLon(px, py);
         getLocationName(lat, lon).then(locationName => {
             console.log(`📍 Pixel placed at (${px}, ${py}) - Location: ${locationName}`);
-            // Update the pixel with the location name
-            setLocalPixels(prev => prev.map(p => 
-                (p.px === px && p.py === py) ? { ...p, locationName } : p
-            ));
+            
+            // Update this pixel AND any other nearby pixels that might match this location
+            setLocalPixels(prev => {
+                const { getGridKey } = require('../lib/reverse-geocode'); // Dynamic import to avoid cycles if any
+                const targetKey = getGridKey(lat, lon);
+                
+                return prev.map(p => {
+                    // Update if it's the target pixel OR if it's nearby/same-grid and missing location
+                    if ((p.px === px && p.py === py) || !p.locationName) {
+                        if (p.px === px && p.py === py) return { ...p, locationName };
+                        
+                        // Check if other pixel is same grid
+                        const pLatLon = globalPxToLatLon(p.px, p.py);
+                        const pKey = getGridKey(pLatLon.lat, pLatLon.lon);
+                        if (pKey === targetKey) {
+                            return { ...p, locationName };
+                        }
+                    }
+                    return p;
+                });
+            });
         });
     }, [updateMarkerInternal]);
 
@@ -421,14 +437,26 @@ export function useMap() {
                 .sort((a, b) => b.timestamp - a.timestamp)
                 .slice(0, 50);
             
-            // Fetch missing location names for the first 10 pixels without them
-            result.slice(0, 10).forEach(pixel => {
+            // Fetch missing location names for the first 12 pixels without them
+            result.slice(0, 12).forEach(pixel => {
                 if (!pixel.locationName && pixel.color !== 0) {
                     const { lat, lon } = globalPxToLatLon(pixel.px, pixel.py);
                     getLocationName(lat, lon).then(locationName => {
-                        setLocalPixels(current => current.map(p => 
-                            (p.px === pixel.px && p.py === pixel.py) ? { ...p, locationName } : p
-                        ));
+                        setLocalPixels(current => {
+                            const { getGridKey } = require('../lib/reverse-geocode');
+                            const targetKey = getGridKey(lat, lon);
+                            
+                            return current.map(p => {
+                                if ((p.px === pixel.px && p.py === pixel.py) || !p.locationName) {
+                                     if (p.px === pixel.px && p.py === pixel.py) return { ...p, locationName };
+                                     
+                                     const pLatLon = globalPxToLatLon(p.px, p.py);
+                                     const pKey = getGridKey(pLatLon.lat, pLatLon.lon);
+                                     if (pKey === targetKey) return { ...p, locationName };
+                                }
+                                return p;
+                            });
+                        });
                     });
                 }
             });

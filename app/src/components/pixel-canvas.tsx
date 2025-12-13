@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { hexToUint32, uint32ToHex } from '../lib/colors';
 import { latLonToGlobalPx, globalPxToLatLon } from '../lib/projection';
 import { getLocationName } from '../lib/reverse-geocode';
+import { FALLBACK_LOCATION } from '../lib/geocode-core';
 import { MapContainer, TileLayer, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ShardGridOverlay } from './shard-grid-overlay';
@@ -390,7 +391,13 @@ export function PixelCanvas() {
                                 locationName: p.location_name || undefined // Include location from API
                             };
                         });
-                        bulkUpdateMarkers(mappedPixels.reverse());
+                        
+                        // Draw pixels (oldest to newest)
+                        bulkUpdateMarkers([...mappedPixels].reverse());
+                        
+                        // Fetch missing location names for recent pixels (newest first in mappedPixels)
+                        // This ensures that when we click/hover recent pixels, we have the location
+
                     }
 
                     // Update Recent Shards List and Unlocked State
@@ -1473,7 +1480,7 @@ export function PixelCanvas() {
                                                 />
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-medium text-slate-700 truncate">
-                                                        {pixel.locationName ? (
+                                                        {pixel.locationName && pixel.locationName !== FALLBACK_LOCATION ? (
                                                             <>at {pixel.locationName}</>
                                                         ) : (
                                                             <>({pixel.px}, {pixel.py})</>
@@ -1544,7 +1551,7 @@ export function PixelCanvas() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-medium text-slate-700 truncate">
-                                                        {shard.locationName ? (
+                                                        {shard.locationName && shard.locationName !== FALLBACK_LOCATION ? (
                                                             <>at {shard.locationName}</>
                                                         ) : (
                                                             <>Shard ({shard.x}, {shard.y})</>

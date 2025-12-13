@@ -596,20 +596,32 @@ export default function Tour() {
                         <Button variant="outline" onClick={() => actions.complete(TourItems.ClickedOnLockedShard)}>
                             Got it!
                         </Button>
-                        <Button 
-                            onClick={() => {
-                                actions.complete(TourItems.ClickedOnLockedShard);
-                                // Trigger unlock via custom event - pixel-canvas listens
-                                if (lockedShard) {
-                                    window.dispatchEvent(new CustomEvent('unlock-shard', { 
-                                        detail: { x: lockedShard.x, y: lockedShard.y } 
-                                    }));
-                                }
-                            }}
-                            className="bg-emerald-500 hover:bg-emerald-600"
-                        >
-                            Unlock Shard 🔓
-                        </Button>
+                        {wallet.connected ? (
+                            <Button 
+                                onClick={() => {
+                                    actions.complete(TourItems.ClickedOnLockedShard);
+                                    // Trigger unlock via custom event - pixel-canvas listens
+                                    if (lockedShard) {
+                                        window.dispatchEvent(new CustomEvent('unlock-shard', { 
+                                            detail: { x: lockedShard.x, y: lockedShard.y } 
+                                        }));
+                                    }
+                                }}
+                                className="bg-emerald-500 hover:bg-emerald-600"
+                            >
+                                Unlock Shard 🔓
+                            </Button>
+                        ) : (
+                            <Button 
+                                onClick={() => {
+                                    actions.complete(TourItems.ClickedOnLockedShard);
+                                    actions.forceStart(TourItems.OnboardingIntro);
+                                }}
+                                className="bg-blue-500 hover:bg-blue-600"
+                            >
+                                Connect Wallet 🔌
+                            </Button>
+                        )}
                     </div>
                 </TourDialogue>
             )
@@ -685,38 +697,7 @@ export default function Tour() {
             )
         }
 
-        if (items[TourItems.PixelPlaceWithoutLogin] === TourStateValues.InProgress) {
-             return (
-                <TourDialogue
-                    title="Connect to Paint 🎨"
-                    description={
-                        <div className="text-sm">
-                            You need a wallet to leave your mark.
-                            <div className="flex items-center justify-center gap-1.5 mt-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                    Devnet
-                                </span>
-                            </div>
-                        </div>
-                    }
-                >
-                     {installedWallets.slice(0, 2).map((w) => (
-                        <button
-                            key={w.adapter.name}
-                            onClick={() => {
-                                handleWalletSelect(w.adapter.name)
-                                actions.complete(TourItems.PixelPlaceWithoutLogin)
-                            }}
-                            className="flex items-center gap-3 px-4 py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all active:scale-[0.98] w-full"
-                        >
-                            <img src={w.adapter.icon} alt={w.adapter.name} className="w-6 h-6 rounded-lg"/>
-                            <span className="font-semibold text-slate-700">Connect {w.adapter.name}</span>
-                        </button>
-                    ))}
-                </TourDialogue>
-            )
-        }
+
 
         if (items[TourItems.CooldownLimitReached] === TourStateValues.InProgress) {
             return (

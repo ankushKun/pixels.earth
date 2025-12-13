@@ -33,8 +33,7 @@ db.run(`
     py INTEGER,
     color INTEGER,
     main_wallet TEXT,
-    timestamp INTEGER,
-    location_name TEXT
+    timestamp INTEGER
   );
 `);
 
@@ -44,7 +43,6 @@ db.run(`
     shard_y INTEGER,
     main_wallet TEXT,
     timestamp INTEGER,
-    location_name TEXT,
     PRIMARY KEY (shard_x, shard_y)
   );
 `);
@@ -63,30 +61,6 @@ db.run(`
     updated_at INTEGER
   );
 `);
-
-// Location cache table for persistent geocoding cache
-// Uses grid-based keys (lat,lon rounded to precision) for efficient spatial lookups
-db.run(`
-  CREATE TABLE IF NOT EXISTS location_cache (
-    grid_key TEXT PRIMARY KEY,
-    location_name TEXT NOT NULL,
-    is_water_body INTEGER DEFAULT 0,
-    created_at INTEGER
-  );
-`);
-
-// Migrations - add location_name column if not exists (for existing databases)
-try {
-  db.run('ALTER TABLE pixel_events ADD COLUMN location_name TEXT');
-} catch (e) {
-  // Column already exists, ignore
-}
-
-try {
-  db.run('ALTER TABLE shards ADD COLUMN location_name TEXT');
-} catch (e) {
-  // Column already exists, ignore
-}
 
 // Optimize performance with Indices
 db.run('CREATE INDEX IF NOT EXISTS idx_pixel_timestamp ON pixel_events(timestamp DESC);');

@@ -5,6 +5,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, X, MapPin, Loader2 } from 'lucide-react';
+import { globalPxToLatLon } from '../lib/projection';
+import { SHARD_DIMENSION } from '../constants';
 
 interface SearchResult {
     display_name: string;
@@ -50,22 +52,73 @@ export function LocationSearch({ onLocationSelect, isOpen, onClose }: LocationSe
         }
 
         setIsLoading(true);
-        try {
-            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=8&addressdetails=1`;
+        const lowerQuery = searchQuery.toLowerCase();
+        const isSecret = lowerQuery.includes('secret') || lowerQuery.includes('doot');
+        
+        // Prepare secret location result if needed
+        let secretResult: SearchResult | null = null;
+        if (isSecret) {
+            // Secret Location: Shard 69, 420
+            const shardX = 69;
+            const shardY = 420;
+            const centerPx = (shardX + 0.5) * SHARD_DIMENSION;
+            const centerPy = (shardY + 0.5) * SHARD_DIMENSION;
+            const { lat, lon } = globalPxToLatLon(centerPx, centerPy);
             
-            const response = await fetch(url, {
-                headers: {
-                    'User-Agent': 'MagicPlace/1.0 (https://magicplace.app)',
-                },
-            });
+            secretResult = {
+                display_name: 'The Secret Location',
+                lat: lat.toString(),
+                lon: lon.toString(),
+                type: 'secret',
+                class: 'place',
+                importance: 1.0,
+                boundingbox: [
+                    (lat - 0.001).toString(),
+                    (lat + 0.001).toString(),
+                    (lon - 0.001).toString(),
+                    (lon + 0.001).toString()
+                ] // simple bounding box
+            };
+        }
 
-            if (response.ok) {
-                const data: SearchResult[] = await response.json();
-                setResults(data);
-                setSelectedIndex(-1);
+        // Helper for retry
+        const fetchWithRetry = async (retries = 3, delay = 1000): Promise<SearchResult[]> => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=8&addressdetails=1`;
+                    const response = await fetch(url, {
+                        headers: { 'User-Agent': 'MagicPlace/1.0 (https://magicplace.app)' },
+                    });
+                    if (response.ok) return await response.json();
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                    await new Promise(r => setTimeout(r, delay));
+                }
             }
+            return [];
+        };
+
+        try {
+            // Show secret result immediately so user sees coords while API retries
+            if (isSecret && secretResult) {
+               setResults([secretResult]);
+            }
+
+            const data = await fetchWithRetry();
+            
+            const finalResults = isSecret && secretResult ? [secretResult, ...data] : data;
+            setResults(finalResults);
+            setSelectedIndex(-1);
+            
         } catch (error) {
             console.error('Location search failed:', error);
+            // If failed, but secret, at least show secret
+            if (isSecret && secretResult) {
+                setResults([secretResult]);
+                setSelectedIndex(-1);
+            } else {
+                setResults([]);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -245,7 +298,10 @@ export function LocationSearch({ onLocationSelect, isOpen, onClose }: LocationSe
                                         {result.display_name.split(',')[0]}
                                     </div>
                                     <div className="text-sm text-slate-500 truncate">
-                                        {result.display_name.split(',').slice(1).join(',').trim()}
+                                        {result.type === 'secret' 
+                                            ? <span className="text-emerald-600 font-mono">Shard: 69, 420 • coords: {Number(result.lat).toFixed(4)}, {Number(result.lon).toFixed(4)}</span> 
+                                            : result.display_name.split(',').slice(1).join(',').trim()
+                                        }
                                     </div>
                                 </div>
                             </button>

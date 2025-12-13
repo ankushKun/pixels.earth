@@ -2,7 +2,6 @@ import { Connection, Keypair } from "@solana/web3.js";
 import { Program, AnchorProvider, Wallet, EventParser } from "@coral-xyz/anchor";
 import db from "./db";
 import idl from "../idl/magicplace.json";
-import { getLocationForPixel, getLocationForShard } from "./geocache";
 import { SHARD_DIMENSION } from "../constants";
 
 // Constants
@@ -25,138 +24,6 @@ const erProvider = new AnchorProvider(erConnection, dummyWallet, { commitment: "
 // @ts-ignore
 const erProgram = new Program(idl, erProvider);
 
-// Pending geocoding queue for retries
-interface PendingGeocode {
-    type: 'pixel' | 'shard';
-    id: number | { x: number; y: number }; // rowid for pixels, coords for shards
-    px: number;
-    py: number;
-    retryCount: number;
-    nextRetry: number;
-}
-
-const pendingGeocodes: PendingGeocode[] = [];
-const MAX_GEOCODE_RETRIES = 5;
-const GEOCODE_RETRY_DELAY = 30000; // 30 seconds between retries
-
-// Process pending geocodes periodically
-async function processPendingGeocodes() {
-    const now = Date.now();
-    const ready = pendingGeocodes.filter(p => p.nextRetry <= now);
-    
-    for (const pending of ready) {
-        try {
-            const locationName = await (pending.type === 'pixel' 
-                ? getLocationForPixel(pending.px, pending.py)
-                : getLocationForShard(pending.px, pending.py, SHARD_DIMENSION));
-            
-            // Success! Update the database
-            if (pending.type === 'pixel') {
-                db.prepare('UPDATE pixel_events SET location_name = ? WHERE id = ?')
-                    .run(locationName, pending.id as number);
-                console.log(`   📍 [Retry] Pixel Location: ${locationName}`);
-            } else {
-                const { x, y } = pending.id as { x: number; y: number };
-                db.prepare('UPDATE shards SET location_name = ? WHERE shard_x = ? AND shard_y = ?')
-                    .run(locationName, x, y);
-                console.log(`   📍 [Retry] Shard Location: ${locationName}`);
-            }
-            
-            // Remove from queue
-            const idx = pendingGeocodes.indexOf(pending);
-            if (idx !== -1) pendingGeocodes.splice(idx, 1);
-            
-        } catch (e) {
-            // Still failing - update retry count and schedule next retry
-            pending.retryCount++;
-            if (pending.retryCount >= MAX_GEOCODE_RETRIES) {
-                console.warn(`   ⚠️ Geocoding failed permanently after ${MAX_GEOCODE_RETRIES} retries for ${pending.type} at (${pending.px}, ${pending.py})`);
-                // Remove from queue - give up
-                const idx = pendingGeocodes.indexOf(pending);
-                if (idx !== -1) pendingGeocodes.splice(idx, 1);
-            } else {
-                // Exponential backoff
-                pending.nextRetry = Date.now() + (GEOCODE_RETRY_DELAY * Math.pow(2, pending.retryCount));
-                console.warn(`   ⏳ Geocoding retry ${pending.retryCount}/${MAX_GEOCODE_RETRIES} scheduled for ${pending.type} at (${pending.px}, ${pending.py})`);
-            }
-        }
-    }
-}
-
-// Start the retry processor
-setInterval(processPendingGeocodes, 10000); // Check every 10 seconds
-
-// Background job to scan database for entries with missing/unknown locations
-const UNKNOWN_LOCATION_SCAN_INTERVAL = 60000; // Scan every 60 seconds
-const UNKNOWN_LOCATION_BATCH_SIZE = 10; // Process 10 entries per scan
-const FALLBACK_LOCATION_VALUE = "Secret Location"; // Must match geocode-core.ts
-
-async function scanAndUpdateUnknownLocations() {
-    try {
-        // Find pixel events with NULL or "Secret Location" location_name
-        const unknownPixels = db.prepare(`
-            SELECT id, px, py FROM pixel_events 
-            WHERE location_name IS NULL OR location_name = ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-        `).all(FALLBACK_LOCATION_VALUE, UNKNOWN_LOCATION_BATCH_SIZE) as { id: number; px: number; py: number }[];
-
-        // Find shards with NULL or "Secret Location" location_name
-        const unknownShards = db.prepare(`
-            SELECT shard_x, shard_y FROM shards 
-            WHERE location_name IS NULL OR location_name = ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-        `).all(FALLBACK_LOCATION_VALUE, UNKNOWN_LOCATION_BATCH_SIZE) as { shard_x: number; shard_y: number }[];
-
-        const totalUnknown = unknownPixels.length + unknownShards.length;
-        if (totalUnknown > 0) {
-            console.log(`🔍 Scanning for unknown locations: ${unknownPixels.length} pixels, ${unknownShards.length} shards`);
-        }
-
-        // Process unknown pixels
-        for (const pixel of unknownPixels) {
-            try {
-                const locationName = await getLocationForPixel(pixel.px, pixel.py);
-                if (locationName && locationName !== FALLBACK_LOCATION_VALUE) {
-                    db.prepare('UPDATE pixel_events SET location_name = ? WHERE id = ?')
-                        .run(locationName, pixel.id);
-                    console.log(`   📍 [Scan] Updated pixel (${pixel.px}, ${pixel.py}): ${locationName}`);
-                }
-            } catch (e) {
-                // Will retry on next scan
-            }
-        }
-
-        // Process unknown shards
-        for (const shard of unknownShards) {
-            try {
-                const locationName = await getLocationForShard(shard.shard_x, shard.shard_y, SHARD_DIMENSION);
-                if (locationName && locationName !== FALLBACK_LOCATION_VALUE) {
-                    db.prepare('UPDATE shards SET location_name = ? WHERE shard_x = ? AND shard_y = ?')
-                        .run(locationName, shard.shard_x, shard.shard_y);
-                    console.log(`   📍 [Scan] Updated shard (${shard.shard_x}, ${shard.shard_y}): ${locationName}`);
-                }
-            } catch (e) {
-                // Will retry on next scan
-            }
-        }
-
-        if (totalUnknown > 0) {
-            console.log(`✅ Unknown location scan complete`);
-        }
-    } catch (e) {
-        console.error('Error scanning for unknown locations:', e);
-    }
-}
-
-// Start the unknown location scanner (with initial delay to avoid startup congestion)
-setTimeout(() => {
-    scanAndUpdateUnknownLocations(); // Run once immediately after delay
-    setInterval(scanAndUpdateUnknownLocations, UNKNOWN_LOCATION_SCAN_INTERVAL);
-}, 5000); // 5 second initial delay
-
-
 // DB update helpers
 function updatePixelStats(event: any) {
     const { px, py, color, painter, mainWallet, timestamp } = event;
@@ -169,8 +36,8 @@ function updatePixelStats(event: any) {
 
     db.prepare('UPDATE global_stats SET total_pixels_placed = total_pixels_placed + 1 WHERE id = 1').run();
     
-    // Insert pixel event (location_name will be updated async)
-    const result = db.prepare(`
+    // Insert pixel event
+    db.prepare(`
         INSERT INTO pixel_events (px, py, color, main_wallet, timestamp)
         VALUES (?, ?, ?, ?, ?)
     `).run(pxNum, pyNum, color, wallet, timestampNum);
@@ -190,30 +57,6 @@ function updatePixelStats(event: any) {
         } catch (e) {
              // ignore
         }
-    }
-
-    // Async: Fetch location name and update the record
-    const insertId = result.lastInsertRowid;
-    if (insertId) {
-        getLocationForPixel(pxNum, pyNum).then(locationName => {
-            try {
-                db.prepare('UPDATE pixel_events SET location_name = ? WHERE id = ?').run(locationName, insertId);
-                console.log(`   📍 Location: ${locationName}`);
-            } catch (e) {
-                // ignore update errors
-            }
-        }).catch((error) => {
-            // Geocoding failed (likely network error) - add to retry queue
-            console.warn(`   ⏳ Geocoding failed for pixel, scheduling retry: ${error?.message || 'unknown error'}`);
-            pendingGeocodes.push({
-                type: 'pixel',
-                id: insertId as number,
-                px: pxNum,
-                py: pyNum,
-                retryCount: 0,
-                nextRetry: Date.now() + GEOCODE_RETRY_DELAY
-            });
-        });
     }
 }
 
@@ -240,28 +83,6 @@ function updateShardStats(event: any) {
             ON CONFLICT(main_wallet) 
             DO UPDATE SET shards_owned_count = shards_owned_count + 1
         `).run(wallet);
-
-        // Async: Fetch location name for shard center and update
-        getLocationForShard(shardXNum, shardYNum, SHARD_DIMENSION).then(locationName => {
-            try {
-                db.prepare('UPDATE shards SET location_name = ? WHERE shard_x = ? AND shard_y = ?')
-                    .run(locationName, shardXNum, shardYNum);
-                console.log(`   📍 Shard Location: ${locationName}`);
-            } catch (e) {
-                // ignore update errors
-            }
-        }).catch((error) => {
-            // Geocoding failed (likely network error) - add to retry queue
-            console.warn(`   ⏳ Geocoding failed for shard, scheduling retry: ${error?.message || 'unknown error'}`);
-            pendingGeocodes.push({
-                type: 'shard',
-                id: { x: shardXNum, y: shardYNum },
-                px: shardXNum, // Using shard coords for the retry
-                py: shardYNum,
-                retryCount: 0,
-                nextRetry: Date.now() + GEOCODE_RETRY_DELAY
-            });
-        });
 
     } catch (e: any) {
         if (e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
