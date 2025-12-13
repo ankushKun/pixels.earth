@@ -9,7 +9,7 @@ skip-lint = false
 magicplace = "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi"
 
 [programs.localnet]
-magicplace = "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi"
+magicplace = "4j29Do6VWdMhfLBdi4n3AeWdVXNEzJNG72sFVUe9cUSe"
 
 [registry]
 url = "https://api.apr.dev"

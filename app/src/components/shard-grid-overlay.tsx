@@ -28,7 +28,7 @@ interface ShardGridOverlayProps {
 
 /**
  * Renders a visual overlay showing the shard grid boundaries on the map.
- * Each shard is 128×128 pixels.
+ * Each shard is 90×90 pixels.
  * Improved Implementation: Uses global tracking for performant, jitter-free hover effects.
  */
 export function ShardGridOverlay({ visible, onAggregatedChange, onVisibleShardsChange, alertShard, unlockedShards, onUnlockShard, highlightShard, hideLockedOverlay, unlockingShard, shardMetadata, currentUserPublicKey }: ShardGridOverlayProps) {

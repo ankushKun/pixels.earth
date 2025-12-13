@@ -685,8 +685,8 @@ export function useMagicplaceProgram() {
             throw new Error("Wallet not connected");
         }
 
-        if (color < 1 || color > 15) {
-            throw new Error(`Invalid color: ${color}. Must be 1-15`);
+        if (color < 1 || color > 255) {
+            throw new Error(`Invalid color: ${color}. Must be 1-255`);
         }
 
         const { shardX, shardY } = getShardForPixel(px, py);
@@ -760,8 +760,8 @@ export function useMagicplaceProgram() {
             throw new Error("Session program or key not available");
         }
 
-        if (color < 1 || color > 15) {
-            throw new Error(`Invalid color: ${color}. Must be 1-15`);
+        if (color < 1 || color > 255) {
+            throw new Error(`Invalid color: ${color}. Must be 1-255`);
         }
 
         const { shardX, shardY } = getShardForPixel(px, py);
@@ -1223,23 +1223,17 @@ export function useMagicplaceProgram() {
     // ========================================
 
     /**
-     * Get a pixel color from shard data (4-bit packed)
-     * Returns 0-15 (0 = transparent, 1-15 = colors)
+     * Get a pixel color from shard data (8-bit direct indexing)
+     * Returns 0-255 (0 = transparent, 1-255 = colors)
      */
     const getPixelFromShard = useCallback((shard: PixelShardAccount, localX: number, localY: number): number => {
         const localPixelId = localY * SHARD_DIMENSION + localX;
-        const byteIndex = Math.floor(localPixelId / 2);
-        const isHighNibble = localPixelId % 2 === 0;
 
-        if (byteIndex >= shard.pixels.length) {
+        if (localPixelId >= shard.pixels.length) {
             return 0;
         }
 
-        const byte = shard.pixels[byteIndex];
-        if (byte === undefined) {
-            return 0;
-        }
-        return isHighNibble ? (byte >> 4) & 0x0F : byte & 0x0F;
+        return shard.pixels[localPixelId] ?? 0;
     }, []);
 
     /**

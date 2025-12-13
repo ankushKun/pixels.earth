@@ -11,34 +11,34 @@ use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::commit_accounts;
 
-declare_id!("CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi");
+declare_id!("4j29Do6VWdMhfLBdi4n3AeWdVXNEzJNG72sFVUe9cUSe");
 
 const DELEGATION_PROGRAM_ID: Pubkey = pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 
 // ========================================
-// Canvas Configuration - 2^18 x 2^18 with dynamic sharding
+// Canvas Configuration - 524,288 x 524,288 with dynamic sharding
 // ========================================
 
 /// Total canvas resolution per dimension (2^19 = 524,288)
 const CANVAS_RES: u32 = 524288;
 
-/// Each shard is 128x128 pixels
-const SHARD_DIMENSION: u32 = 128;
+/// Each shard is 90x90 pixels
+const SHARD_DIMENSION: u32 = 90;
 
-/// Number of shards per dimension (524,288 / 128 = 4,096)
-const SHARDS_PER_DIM: u32 = CANVAS_RES / SHARD_DIMENSION;
+/// Number of shards per dimension (ceiling division: 524,288 / 90 = 5,826)
+const SHARDS_PER_DIM: u32 = (CANVAS_RES + SHARD_DIMENSION - 1) / SHARD_DIMENSION;
 
-/// Total pixels stored in each shard (128 * 128 = 16,384)
+/// Total pixels stored in each shard (90 * 90 = 8,100)
 const PIXELS_PER_SHARD: usize = (SHARD_DIMENSION * SHARD_DIMENSION) as usize;
 
-/// Bytes needed to store packed pixels (2 pixels per byte using 4-bit colors)
-const BYTES_PER_SHARD: usize = PIXELS_PER_SHARD / 2;
+/// Bytes needed to store pixels (1 byte per pixel using 8-bit colors)
+const BYTES_PER_SHARD: usize = PIXELS_PER_SHARD;
 
 /// Seed prefix for shard PDAs
 const SHARD_SEED: &[u8] = b"shard";
 
-/// Available colors using 4-bit packing (0 = unset/transparent, 1-15 = palette colors)
-const AVAILABLE_COLORS: u8 = 15;
+/// Available colors using 8-bit storage (0 = unset/transparent, 1-255 = palette colors)
+const AVAILABLE_COLORS: u8 = 255;
 
 /// Max pixels allowed in a burst for non-owners
 const COOLDOWN_LIMIT: u8 = 50;
@@ -261,25 +261,14 @@ pub mod magicplace {
         let local_y = py % SHARD_DIMENSION;
         let local_pixel_id = (local_y * SHARD_DIMENSION + local_x) as usize;
         
-        // 4-bit packing: 2 pixels per byte
-        // Even pixels (0, 2, 4...) in high nibble, odd pixels (1, 3, 5...) in low nibble
-        let byte_index = local_pixel_id / 2;
-        let is_high_nibble = local_pixel_id % 2 == 0;
-        
-        if is_high_nibble {
-            // Clear high nibble and set new color
-            shard.pixels[byte_index] = (shard.pixels[byte_index] & 0x0F) | (color << 4);
-        } else {
-            // Clear low nibble and set new color
-            shard.pixels[byte_index] = (shard.pixels[byte_index] & 0xF0) | (color & 0x0F);
-        }
+        // 8-bit storage: 1 byte per pixel, direct indexing
+        shard.pixels[local_pixel_id] = color;
         
         msg!(
-            "Pixel ({}, {}) -> Shard ({}, {}) byte {} nibble {} = color {}",
+            "Pixel ({}, {}) -> Shard ({}, {}) index {} = color {}",
             px, py,
             shard.shard_x, shard.shard_y,
-            byte_index,
-            if is_high_nibble { "high" } else { "low" },
+            local_pixel_id,
             color
         );
 
@@ -318,15 +307,8 @@ pub mod magicplace {
         let local_y = py % SHARD_DIMENSION;
         let local_pixel_id = (local_y * SHARD_DIMENSION + local_x) as usize;
         
-        // 4-bit packing: clear the appropriate nibble
-        let byte_index = local_pixel_id / 2;
-        let is_high_nibble = local_pixel_id % 2 == 0;
-        
-        if is_high_nibble {
-            shard.pixels[byte_index] &= 0x0F; // Clear high nibble
-        } else {
-            shard.pixels[byte_index] &= 0xF0; // Clear low nibble
-        }
+        // 8-bit storage: direct indexing, set to 0 (transparent)
+        shard.pixels[local_pixel_id] = 0;
         
         msg!("Pixel ({}, {}) erased", px, py);
 
@@ -516,21 +498,20 @@ pub struct CommitShardInput<'info> {
 // ========================================
 
 /// A single shard of the pixel canvas
-/// Each shard stores 16,384 pixels (128×128 grid) using 4-bit packed colors = ~8KB
-/// Up to 16,777,216 shards (4096×4096 grid) can cover the full 524,288×524,288 canvas
+/// Each shard stores 8,100 pixels (90×90 grid) using 8-bit colors = ~8KB
+/// Up to 33,942,276 shards (5826×5826 grid) can cover the full 524,288×524,288 canvas
 /// Shards are created on-demand when users paint in new regions
 #[account]
 #[derive(InitSpace)]
 pub struct PixelShard {
-    /// Shard X coordinate (0-4095)
+    /// Shard X coordinate (0-5825)
     pub shard_x: u16,
-    /// Shard Y coordinate (0-4095)
+    /// Shard Y coordinate (0-5825)
     pub shard_y: u16,
-    /// Pixel data - 4-bit packed storage (2 pixels per byte)
-    /// Byte index = pixel_id / 2
-    /// Even pixels in high nibble (bits 4-7), odd pixels in low nibble (bits 0-3)
-    /// Value = color_index (0 = unset/transparent, 1-15 = palette colors)
-    #[max_len(8192)]
+    /// Pixel data - 8-bit storage (1 byte per pixel)
+    /// Index = local_y * 90 + local_x
+    /// Value = color_index (0 = unset/transparent, 1-255 = palette colors)
+    #[max_len(8100)]
     pub pixels: Vec<u8>,
     /// Creator of the shard (who paid for initialization)
     pub creator: Pubkey,
@@ -556,7 +537,7 @@ pub struct SessionAccount {
 
 #[error_code]
 pub enum PixelError {
-    #[msg("Invalid shard coordinates: must be 0-4095")]
+    #[msg("Invalid shard coordinates: must be 0-5825")]
     InvalidShardCoord,
     #[msg("Invalid pixel coordinates: must be 0-524287")]
     InvalidPixelCoord,

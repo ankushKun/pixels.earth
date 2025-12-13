@@ -592,13 +592,13 @@ export default function Tour() {
                         You now <span className="text-indigo-600 font-bold">own</span> this shard!
                     </>}
                 >
-                    <div className="bg-emerald-50 rounded-xl p-3 w-full text-center border border-emerald-100">
+                    <div className=" rounded-xl p-3 w-fit text-center ">
                         <p className="text-emerald-800 font-medium text-sm">
                             ✨ No cooldowns for you here!<br/>
                             💰 You earn SOL from premiums!
                         </p>
                     </div>
-                    <Button onClick={() => actions.complete(TourItems.UnlockedShard)} className="w-full">
+                    <Button onClick={() => actions.complete(TourItems.UnlockedShard)} className="w-fit">
                         Awesome! 🚀
                     </Button>
                 </TourDialogue>

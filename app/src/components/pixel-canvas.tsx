@@ -448,48 +448,24 @@ export function PixelCanvas() {
 
                 let pixelCount = 0;
 
-                // Unpack pixels
+                // Unpack pixels (8-bit direct indexing)
                 const pixels = shard.pixels;
                 for (let i = 0; i < pixels.length; i++) {
-                    const byte = pixels[i];
-                    if (byte === undefined || byte === 0) continue;
+                    const colorIndex = pixels[i];
+                    if (colorIndex === undefined || colorIndex === 0) continue;
 
-                    // Low nibble (ODD index pixel)
-                    const p1 = byte & 0x0F;
-                    if (p1 !== 0) {
-                        pixelCount++;
-                        const colorHex = PRESET_COLORS[p1 - 1]; // 1-based index
-                        if (colorHex) {
-                            const localIndex = 2 * i + 1; // Odd
-                            const localY = Math.floor(localIndex / SHARD_DIMENSION);
-                            const localX = localIndex % SHARD_DIMENSION;
+                    pixelCount++;
+                    const colorHex = PRESET_COLORS[colorIndex - 1]; // 1-based index
+                    if (colorHex) {
+                        const localY = Math.floor(i / SHARD_DIMENSION);
+                        const localX = i % SHARD_DIMENSION;
 
-                            allPixels.push({
-                                px: shard.shardX * SHARD_DIMENSION + localX,
-                                py: shard.shardY * SHARD_DIMENSION + localY,
-                                color: hexToUint32(colorHex),
-                                timestamp: 0
-                            });
-                        }
-                    }
-
-                    // High nibble (EVEN index pixel)
-                    const p2 = (byte >> 4) & 0x0F;
-                    if (p2 !== 0) {
-                        pixelCount++;
-                        const colorHex = PRESET_COLORS[p2 - 1]; // 1-based index
-                        if (colorHex) {
-                            const localIndex = 2 * i; // Even
-                            const localY = Math.floor(localIndex / SHARD_DIMENSION);
-                            const localX = localIndex % SHARD_DIMENSION;
-
-                            allPixels.push({
-                                px: shard.shardX * SHARD_DIMENSION + localX,
-                                py: shard.shardY * SHARD_DIMENSION + localY,
-                                color: hexToUint32(colorHex),
-                                timestamp: 0
-                            });
-                        }
+                        allPixels.push({
+                            px: shard.shardX * SHARD_DIMENSION + localX,
+                            py: shard.shardY * SHARD_DIMENSION + localY,
+                            color: hexToUint32(colorHex),
+                            timestamp: 0
+                        });
                     }
                 }
 

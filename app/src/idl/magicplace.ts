@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/magicplace.json`.
  */
 export type Magicplace = {
-  "address": "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi",
+  "address": "4j29Do6VWdMhfLBdi4n3AeWdVXNEzJNG72sFVUe9cUSe",
   "metadata": {
     "name": "magicplace",
     "version": "0.1.0",
@@ -130,38 +130,38 @@ export type Magicplace = {
             "program": {
               "kind": "const",
               "value": [
-                176,
-                231,
                 55,
+                86,
+                190,
+                231,
+                187,
+                241,
+                178,
+                93,
+                156,
+                164,
+                97,
+                165,
+                93,
                 69,
-                33,
-                111,
-                117,
-                214,
-                75,
-                159,
-                172,
-                43,
-                103,
+                109,
+                254,
+                60,
+                140,
+                218,
+                139,
+                104,
+                66,
+                16,
+                9,
+                139,
+                59,
+                136,
                 184,
-                47,
-                150,
-                24,
-                225,
-                223,
-                191,
-                168,
-                255,
-                209,
-                211,
-                99,
-                220,
-                123,
-                7,
-                42,
-                100,
-                172,
-                105
+                153,
+                69,
+                121,
+                115
               ]
             }
           }
@@ -265,7 +265,7 @@ export type Magicplace = {
         },
         {
           "name": "ownerProgram",
-          "address": "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi"
+          "address": "4j29Do6VWdMhfLBdi4n3AeWdVXNEzJNG72sFVUe9cUSe"
         },
         {
           "name": "delegationProgram",
@@ -363,38 +363,38 @@ export type Magicplace = {
             "program": {
               "kind": "const",
               "value": [
-                176,
-                231,
                 55,
+                86,
+                190,
+                231,
+                187,
+                241,
+                178,
+                93,
+                156,
+                164,
+                97,
+                165,
+                93,
                 69,
-                33,
-                111,
-                117,
-                214,
-                75,
-                159,
-                172,
-                43,
-                103,
+                109,
+                254,
+                60,
+                140,
+                218,
+                139,
+                104,
+                66,
+                16,
+                9,
+                139,
+                59,
+                136,
                 184,
-                47,
-                150,
-                24,
-                225,
-                223,
-                191,
-                168,
-                255,
-                209,
-                211,
-                99,
-                220,
-                123,
-                7,
-                42,
-                100,
-                172,
-                105
+                153,
+                69,
+                121,
+                115
               ]
             }
           }
@@ -496,7 +496,7 @@ export type Magicplace = {
         },
         {
           "name": "ownerProgram",
-          "address": "CuZF7XRUieUPhPDNcNCrY27ai1JaEFJrQ5SdxXTckgfi"
+          "address": "4j29Do6VWdMhfLBdi4n3AeWdVXNEzJNG72sFVUe9cUSe"
         },
         {
           "name": "delegationProgram",
@@ -966,7 +966,7 @@ export type Magicplace = {
     {
       "code": 6000,
       "name": "invalidShardCoord",
-      "msg": "Invalid shard coordinates: must be 0-4095"
+      "msg": "Invalid shard coordinates: must be 0-5825"
     },
     {
       "code": 6001,
@@ -1031,8 +1031,8 @@ export type Magicplace = {
       "name": "pixelShard",
       "docs": [
         "A single shard of the pixel canvas",
-        "Each shard stores 16,384 pixels (128×128 grid) using 4-bit packed colors = ~8KB",
-        "Up to 16,777,216 shards (4096×4096 grid) can cover the full 524,288×524,288 canvas",
+        "Each shard stores 8,100 pixels (90×90 grid) using 8-bit colors = ~8KB",
+        "Up to 33,942,276 shards (5826×5826 grid) can cover the full 524,288×524,288 canvas",
         "Shards are created on-demand when users paint in new regions"
       ],
       "type": {
@@ -1041,24 +1041,23 @@ export type Magicplace = {
           {
             "name": "shardX",
             "docs": [
-              "Shard X coordinate (0-4095)"
+              "Shard X coordinate (0-5825)"
             ],
             "type": "u16"
           },
           {
             "name": "shardY",
             "docs": [
-              "Shard Y coordinate (0-4095)"
+              "Shard Y coordinate (0-5825)"
             ],
             "type": "u16"
           },
           {
             "name": "pixels",
             "docs": [
-              "Pixel data - 4-bit packed storage (2 pixels per byte)",
-              "Byte index = pixel_id / 2",
-              "Even pixels in high nibble (bits 4-7), odd pixels in low nibble (bits 0-3)",
-              "Value = color_index (0 = unset/transparent, 1-15 = palette colors)"
+              "Pixel data - 8-bit storage (1 byte per pixel)",
+              "Index = local_y * 90 + local_x",
+              "Value = color_index (0 = unset/transparent, 1-255 = palette colors)"
             ],
             "type": "bytes"
           },
