@@ -13,16 +13,24 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { WalletProvider } from "./providers/wallet-provider";
 import { SessionKeyProvider } from "./hooks/use-session-key";
+import { PostHogProvider } from 'posthog-js/react'
 import { App } from "./App";
+
+const options = {
+  api_host: "https://eu.i.posthog.com",
+  defaults: '2025-11-30',
+} as const
 
 const elem = document.getElementById("root")!;
 const app = (
   <StrictMode>
+     <PostHogProvider apiKey={"phc_Y9UZlKVXQjlMqgUVDkcNjJTmKcZD7XUtZvhX2lAFFrK"} options={options}>
     <WalletProvider>
       <SessionKeyProvider>
         <App />
       </SessionKeyProvider>
-    </WalletProvider>
+      </WalletProvider>
+      </PostHogProvider>
   </StrictMode>
 );
 

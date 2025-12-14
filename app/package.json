@@ -32,6 +32,7 @@
     "gun": "^0.2020.1241",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.545.0",
+    "posthog-js": "^1.306.1",
     "react": "^19",
     "react-dom": "^19",
     "react-leaflet": "^5.0.0",
