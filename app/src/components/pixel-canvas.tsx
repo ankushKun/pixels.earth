@@ -42,6 +42,7 @@ import { useTourActions, TourItems } from '../hooks/use-tour';
 import { SettingsDialog } from './settings-dialog';
 import { LocationSearch } from './location-search';
 import { usePostHog } from 'posthog-js/react';
+import MagicBlockLogo from '../assets/mgb.svg';
 
 // Custom Cursor Icon with name label
 const createCursorIcon = (color: string, name: string) => divIcon({
@@ -1764,9 +1765,33 @@ export function PixelCanvas() {
                 </Button>
             </div>
 
+            {/* Social Links - Bottom Left */}
+            <div className="absolute bottom-3 left-3 z-50 print:hidden flex flex-col justify-center items-center gap-1.5">
+                <a
+                    href="https://x.com/pixelsdotearth"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white/90 backdrop-blur shadow-lg hover:bg-white rounded-full h-8 w-8 border border-slate-200 flex items-center justify-center transition-all hover:scale-105"
+                    title="Follow us on X"
+                >
+                    <svg className="h-5 w-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                </a>
+                <a
+                    href="https://magicblock.gg"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white/90 backdrop-blur shadow-lg hover:bg-white rounded-full h-8 w-8 border border-slate-200 flex items-center justify-center transition-all hover:scale-105"
+                    title="Built on MagicBlock"
+                >
+                    <img src={MagicBlockLogo} alt="MagicBlock" className="h-5.5 w-5.5" />
+                </a>
+            </div>
+
             {/* Debug Panel - only visible in development */}
             {process.env.NODE_ENV !== "production" && (
-                <div className="absolute bottom-4 left-4 z-50 bg-black/80 text-white text-xs font-mono px-3 py-2 rounded-lg max-h-48 overflow-y-auto">
+                <div className="absolute bottom-20 left-4 z-50 bg-black/80 text-white text-xs font-mono px-3 py-2 rounded-lg max-h-48 overflow-y-auto">
                     <div>Zoom: {currentZoom.toFixed(1)}</div>
                     {showShardGrid && (
                         <>
