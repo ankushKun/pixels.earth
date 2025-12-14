@@ -1,5 +1,8 @@
 import { serve } from "bun";
 import index from "./index.html";
+import licensePage from "./pages/license.html";
+import copyrightPage from "./pages/copyright.html";
+import privacyPage from "./pages/privacy.html";
 import { startIndexer } from "./server/indexer";
 import db from "./server/db";
 
@@ -61,6 +64,11 @@ const server = serve({
     // Serve static assets for OG tags
     "/banner.png": Bun.file("./public/banner.png"),
     "/icon.png": Bun.file("./public/icon.png"),
+
+    // Legal pages
+    "/license": licensePage,
+    "/copyright": copyrightPage,
+    "/privacy": privacyPage,
 
     // Serve index.html for /
     "/": index,
