@@ -41,6 +41,7 @@ import "../lib/smooth-zoom"
 import { useTourActions, TourItems } from '../hooks/use-tour';
 import { SettingsDialog } from './settings-dialog';
 import { LocationSearch } from './location-search';
+import { usePostHog } from 'posthog-js/react';
 
 // Custom Cursor Icon with name label
 const createCursorIcon = (color: string, name: string) => divIcon({
@@ -215,6 +216,7 @@ function Color({ color, selected, onClick }: { color: string, selected: boolean,
 export function PixelCanvas() {
     const { onlineUsers, updateMyPresence, myId } = useGunPresence();
     const actions = useTourActions();
+    const posthog = usePostHog();
 
     const {
         mapRef,
@@ -764,6 +766,31 @@ export function PixelCanvas() {
                 await erasePixelOnER(px, py);
                 removeMarker(`${px},${py}`);
                 toast.success("Pixel erased", { duration: 1500 });
+
+                // Track pixel erased event in PostHog
+                const shardX = Math.floor(px / SHARD_DIMENSION);
+                const shardY = Math.floor(py / SHARD_DIMENSION);
+                const { lat, lon } = globalPxToLatLon(px, py);
+                posthog.capture('pixel_placed', {
+                    // Position data
+                    pixel_x: px,
+                    pixel_y: py,
+                    latitude: lat,
+                    longitude: lon,
+                    shard_x: shardX,
+                    shard_y: shardY,
+                    shard_key: `${shardX},${shardY}`,
+                    // Color data
+                    color_hex: TRANSPARENT_COLOR,
+                    color_index: 0,
+                    // User data
+                    wallet_address: wallet.publicKey?.toBase58() || 'unknown',
+                    session_key: sessionKey?.keypair?.publicKey.toBase58() || 'unknown',
+                    // Context
+                    current_zoom: currentZoom,
+                    is_erasing: true,
+                    timestamp: Date.now(),
+                });
             } else {
                 // Find color index (1-based) for contract
                 const colorIndex = PRESET_COLORS.indexOf(selectedColor as any) + 1;
@@ -852,6 +879,29 @@ export function PixelCanvas() {
                     }
                     return next;
                 });
+
+                // Track pixel placed event in PostHog
+                const { lat, lon } = globalPxToLatLon(px, py);
+                posthog.capture('pixel_placed', {
+                    // Position data
+                    pixel_x: px,
+                    pixel_y: py,
+                    latitude: lat,
+                    longitude: lon,
+                    shard_x: shardX,
+                    shard_y: shardY,
+                    shard_key: shardKey,
+                    // Color data
+                    color_hex: selectedColor,
+                    color_index: colorIndex,
+                    // User data
+                    wallet_address: wallet.publicKey?.toBase58() || 'unknown',
+                    session_key: sessionKey?.keypair?.publicKey.toBase58() || 'unknown',
+                    // Context
+                    current_zoom: currentZoom,
+                    is_erasing: false,
+                    timestamp: Date.now(),
+                });
             }
 
             // Play pop sound
@@ -861,7 +911,7 @@ export function PixelCanvas() {
             console.error("Failed to place pixel:", e);
             toast.error("Failed to place pixel: " + (e instanceof Error ? e.message : String(e)));
         }
-    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard, cooldownState, initializeShard]);
+    }, [selectedColor, updateMarker, removeMarker, playPop, playFail, isShardLocked, placePixelOnER, erasePixelOnER, unlockingShard, zoomToLockedShard, cooldownState, initializeShard, posthog, wallet.publicKey, sessionKey, currentZoom]);
 
 
 
@@ -958,6 +1008,25 @@ export function PixelCanvas() {
                 ));
             });
 
+            // Track shard unlocked event in PostHog
+            posthog.capture('shard_unlocked', {
+                // Position data
+                shard_x: shardX,
+                shard_y: shardY,
+                shard_key: shardKey,
+                center_latitude: lat,
+                center_longitude: lon,
+                // Cost data
+                unlock_cost_lamports: costEstimate.total,
+                unlock_cost_sol: costEstimate.total / 1_000_000_000,
+                // User data
+                wallet_address: wallet.publicKey?.toBase58() || 'unknown',
+                session_key: sessionKey?.keypair?.publicKey.toBase58() || 'unknown',
+                // Context
+                current_zoom: currentZoom,
+                timestamp: Date.now(),
+            });
+
             // Show congratulations dialog for first-time unlock
             actions.start(TourItems.UnlockedShard);
 
@@ -969,7 +1038,7 @@ export function PixelCanvas() {
         } finally {
             setUnlockingShard(null);
         }
-    }, [playPop, playUnlock, playFail, initializeShard, estimateShardUnlockCost, checkBalance, refreshBalance, unlockingShard, wallet.publicKey]);
+    }, [playPop, playUnlock, playFail, initializeShard, estimateShardUnlockCost, checkBalance, refreshBalance, unlockingShard, wallet.publicKey, posthog, sessionKey, currentZoom, actions]);
 
     // Listen for unlock-shard events from Tour component
     useEffect(() => {
