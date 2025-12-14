@@ -146,6 +146,17 @@ if (existsSync(publicDir)) {
     const { stdout, stderr } = Bun.spawnSync(["cp", "-R", "public/.", outdir]);
 }
 
+// Fix manifest.json path in built HTML files
+console.log("🔧 Fixing manifest.json paths...");
+for (const entrypoint of entrypoints) {
+    const outputHtml = path.join(outdir, path.basename(entrypoint));
+    if (existsSync(outputHtml)) {
+        let html = await Bun.file(outputHtml).text();
+        html = html.replace('../public/manifest.json', './manifest.json');
+        await Bun.write(outputHtml, html);
+    }
+}
+
 const end = performance.now();
 
 const outputTable = result.outputs.map(output => ({
