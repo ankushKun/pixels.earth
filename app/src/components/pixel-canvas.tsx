@@ -22,7 +22,7 @@ import {
 } from '../constants';
 import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
-import { Brush, Eraser, Grid2X2, Grid3X3, ImagePlus, LayoutGrid, ScanEye, Search, Settings, Unlock, Volume2, VolumeX, X } from 'lucide-react';
+import { Brush, Eraser, Grid2X2, Grid3X3, ImagePlus, LayoutGrid, ScanEye, Search, Settings, Unlock, Upload, Volume2, VolumeX, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGameSounds } from '../hooks/use-game-sounds';
 import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
@@ -1467,6 +1467,96 @@ export function PixelCanvas() {
         alert('Link copied!');
     }, [selectedPixel]);
 
+    // State for global image paste/drop
+    const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const dragCounter = useRef(0);
+
+    // Global drag-and-drop and paste handlers
+    useEffect(() => {
+        const handlePaste = (e: ClipboardEvent) => {
+            // If the active element is an input or textarea, don't intercept paste
+            if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            const items = e.clipboardData?.items;
+            if (!items) return;
+
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) {
+                        setPendingUploadFile(file);
+                        setIsImageUploadOpen(true);
+                        setIsDragging(false);
+                        dragCounter.current = 0;
+                    }
+                    break;
+                }
+            }
+        };
+
+        const handleDragEnter = (e: DragEvent) => {
+            if (e.dataTransfer?.types.includes('Files')) {
+                e.preventDefault();
+                dragCounter.current += 1;
+                if (dragCounter.current === 1) {
+                    setIsDragging(true);
+                }
+            }
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+            if (e.dataTransfer?.types.includes('Files')) {
+                e.preventDefault();
+                dragCounter.current -= 1;
+                if (dragCounter.current <= 0) {
+                    dragCounter.current = 0;
+                    setIsDragging(false);
+                }
+            }
+        };
+
+        const handleDragOver = (e: DragEvent) => {
+            // Only prevent default if we're dragging a file
+            if (e.dataTransfer?.types.includes('Files')) {
+                e.preventDefault(); 
+            }
+        };
+
+        const handleDrop = (e: DragEvent) => {
+            // Should always reset drag state on drop
+            dragCounter.current = 0;
+            setIsDragging(false);
+
+            // Only handle if files are being dropped
+            if (e.dataTransfer?.types.includes('Files')) {
+                e.preventDefault();
+                const file = e.dataTransfer?.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    setPendingUploadFile(file);
+                    setIsImageUploadOpen(true);
+                }
+            }
+        };
+
+        window.addEventListener('paste', handlePaste);
+        window.addEventListener('dragenter', handleDragEnter);
+        window.addEventListener('dragleave', handleDragLeave);
+        window.addEventListener('dragover', handleDragOver);
+        window.addEventListener('drop', handleDrop);
+
+        return () => {
+            window.removeEventListener('paste', handlePaste);
+            window.removeEventListener('dragenter', handleDragEnter);
+            window.removeEventListener('dragleave', handleDragLeave);
+            window.removeEventListener('dragover', handleDragOver);
+            window.removeEventListener('drop', handleDrop);
+        };
+    }, []);
+
     return (
         <div className="h-dvh w-screen overflow-hidden bg-zinc-100 relative">
             {/* Full-screen Map */}
@@ -2087,13 +2177,17 @@ export function PixelCanvas() {
             />
             <ImageUploadDialog
                 open={isImageUploadOpen}
-                onOpenChange={setIsImageUploadOpen}
+                onOpenChange={(open) => {
+                    setIsImageUploadOpen(open);
+                    if (!open) setPendingUploadFile(null);
+                }}
                 onConfirm={(pixelArt) => {
                     setStampPixelArt(pixelArt);
                     setIsStampMode(true);
                     toast.success(`Pixel art loaded! Click anywhere on the map to stamp it.`, { duration: 4000 });
                 }}
                 unlockedShards={unlockedShards}
+                initialFile={pendingUploadFile}
             />
 
             {/* Stamp Mode Indicator */}
@@ -2136,6 +2230,16 @@ export function PixelCanvas() {
                             </button>
                         )}
                     </div>
+                </div>
+            )}
+            {/* Drag & Drop Overlay */}
+            {isDragging && !isImageUploadOpen && (
+                <div className="absolute inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-in fade-in duration-200">
+                    <div className="bg-white/10 p-8 rounded-full mb-6 border-4 border-white/30">
+                        <Upload className="w-16 h-16 text-white" />
+                    </div>
+                    <div className="text-white text-2xl font-bold mb-2">Drop Image to Upload</div>
+                    <div className="text-white/70 text-lg">Convert to pixel art instantly</div>
                 </div>
             )}
         </div>

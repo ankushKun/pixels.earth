@@ -23,6 +23,7 @@ interface ImageUploadDialogProps {
   onOpenChange: (open: boolean) => void;
   onConfirm: (pixelArt: PixelArtData) => void;
   unlockedShards: Set<string>;
+  initialFile?: File | null;
 }
 
 // Min and max size for the slider
@@ -33,7 +34,8 @@ export function ImageUploadDialog({
   open, 
   onOpenChange, 
   onConfirm,
-  unlockedShards 
+  unlockedShards,
+  initialFile
 }: ImageUploadDialogProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +50,11 @@ export function ImageUploadDialog({
   useEffect(() => {
     if (open) {
       preloadNSFWModel();
+      if (initialFile) {
+        handleFileSelect(initialFile);
+      }
     }
-  }, [open]);
+  }, [open, initialFile]);
 
   // Reset state when dialog closes
   const handleOpenChange = (newOpen: boolean) => {
@@ -117,6 +122,7 @@ export function ImageUploadDialog({
     for (const item of items) {
       if (item.type.startsWith('image/')) {
         e.preventDefault();
+        e.stopPropagation();
         const file = item.getAsFile();
         if (file) {
           // Create a new file with a proper name for pasted images
@@ -170,12 +176,14 @@ export function ImageUploadDialog({
   // Handle drag and drop
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const file = e.dataTransfer.files[0];
     if (file) handleFileSelect(file);
   }, [handleFileSelect]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
   };
 
   // Calculate stats
