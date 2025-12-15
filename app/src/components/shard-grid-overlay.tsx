@@ -352,7 +352,9 @@ export function ShardGridOverlay({ visible, onAggregatedChange, onVisibleShardsC
 
         map.on('moveend', updateGridAndVisibility);
         map.on('zoomend', updateGridAndVisibility);
-        // Initial call
+        
+        // Call immediately - this runs on mount AND when dependencies change
+        // This ensures grid labels update when shardMetadata or unlockedShards change
         updateGridAndVisibility();
 
         return () => {
