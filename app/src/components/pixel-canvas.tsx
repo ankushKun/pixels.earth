@@ -1203,12 +1203,27 @@ export function PixelCanvas() {
         const total = pixelsToPlace.length;
         const toastId = toast.loading(`Placing pixels: 0/${total}`);
 
+        // Check if we have an active cooldown before starting
+        // If we're at the limit, we must wait for cooldown to expire first
+        if (cooldownState.placed >= COOLDOWN_LIMIT) {
+            const now = Math.floor(Date.now() / 1000);
+            const elapsed = now - cooldownState.lastTimestamp;
+            if (elapsed < COOLDOWN_PERIOD) {
+                const remaining = COOLDOWN_PERIOD - elapsed;
+                toast.loading(`Cooldown active: ${remaining}s remaining...`, { id: toastId });
+                await new Promise(resolve => setTimeout(resolve, remaining * 1000 + 500));
+            }
+        }
+
         let placed = 0;
         let failed = 0;
         const startTime = Date.now();
         const userPubkey = wallet.publicKey?.toBase58();
+        
+        // Track cooldown state during placement
+        let currentCooldownCount = cooldownState.placed >= COOLDOWN_LIMIT ? 0 : cooldownState.placed;
 
-        // Helper to check if user owns the shard
+        // Helper to check if user owns the shard (no cooldown for owners)
         const userOwnsShard = (shardX: number, shardY: number): boolean => {
             if (!userPubkey) return false;
             const shardKey = `${shardX},${shardY}`;
@@ -1246,19 +1261,28 @@ export function PixelCanvas() {
                 const shardY = parseInt(shardYStr!);
                 const isOwner = userOwnsShard(shardX, shardY);
                 
-                // Split into chunks of max 50 pixels (COOLDOWN_LIMIT)
-                const BULK_SIZE = COOLDOWN_LIMIT;
-                for (let i = 0; i < shardPixels.length; i += BULK_SIZE) {
-                    const batch = shardPixels.slice(i, i + BULK_SIZE);
-                    
-                    // Check cooldown for non-owner shards
-                    // Note: The contract handles cooldown internally, but for large stamps
-                    // we might need to wait between batches on non-owned shards
-                    if (!isOwner && i > 0) {
-                        // Wait a bit between batches on others' shards to avoid cooldown rejection
-                        toast.loading(`Cooldown... ${placed}/${total} placed`, { id: toastId });
-                        await new Promise(resolve => setTimeout(resolve, COOLDOWN_PERIOD * 1000 + 500));
+                // Process all pixels for this shard
+                let shardIndex = 0;
+                while (shardIndex < shardPixels.length) {
+                    // Determine batch size based on cooldown state
+                    let batchSize: number;
+                    if (isOwner) {
+                        // Owners have no cooldown - use max batch size
+                        batchSize = Math.min(COOLDOWN_LIMIT, shardPixels.length - shardIndex);
+                    } else {
+                        // Non-owners: respect remaining cooldown capacity
+                        const remaining = COOLDOWN_LIMIT - currentCooldownCount;
+                        if (remaining <= 0) {
+                            // Need to wait for cooldown to reset
+                            toast.loading(`Cooldown... ${placed}/${total} placed, waiting 30s...`, { id: toastId });
+                            await new Promise(resolve => setTimeout(resolve, COOLDOWN_PERIOD * 1000 + 500));
+                            currentCooldownCount = 0;
+                            continue; // Re-check with fresh counter
+                        }
+                        batchSize = Math.min(remaining, shardPixels.length - shardIndex);
                     }
+                    
+                    const batch = shardPixels.slice(shardIndex, shardIndex + batchSize);
                     
                     toast.loading(`Placing pixels: ${placed}/${total} (batch of ${batch.length})`, { id: toastId });
                     
@@ -1273,6 +1297,11 @@ export function PixelCanvas() {
                         // Send bulk transaction
                         await placePixelsBulkOnER(shardX, shardY, bulkPixels);
                         
+                        // Update cooldown counter for non-owners
+                        if (!isOwner) {
+                            currentCooldownCount += batch.length;
+                        }
+                        
                         // Update UI - all pixels in batch appear at once
                         for (const pixel of batch) {
                             const colorHex = PRESET_COLORS[pixel.color - 1];
@@ -1282,10 +1311,12 @@ export function PixelCanvas() {
                         }
                         
                         placed += batch.length;
+                        shardIndex += batch.length;
                         toast.loading(`Placing pixels: ${placed}/${total}`, { id: toastId });
                     } catch (e) {
                         console.error(`Failed to place batch on shard (${shardX}, ${shardY}):`, e);
                         failed += batch.length;
+                        shardIndex += batch.length; // Skip failed batch
                         toast.loading(`Placing pixels: ${placed}/${total} (${failed} failed)`, { id: toastId });
                     }
                     
@@ -1313,7 +1344,7 @@ export function PixelCanvas() {
         } finally {
             setIsStamping(false);
         }
-    }, [stampPixelArt, isStamping, isShardLocked, isReadonly, sessionKey, wallet.publicKey, actions, placePixelsBulkOnER, updateMarker, playPop, playFail, zoomToLockedShard, shardMetadata]);
+    }, [stampPixelArt, isStamping, isShardLocked, isReadonly, sessionKey, wallet.publicKey, actions, placePixelsBulkOnER, updateMarker, playPop, playFail, zoomToLockedShard, shardMetadata, cooldownState]);
 
     // Combined click handler that handles both normal and stamp modes
     const handleMapClickCombined = useCallback((lat: number, lng: number) => {
