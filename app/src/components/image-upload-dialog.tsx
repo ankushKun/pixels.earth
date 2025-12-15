@@ -14,8 +14,9 @@ import {
   getAffectedShards,
   type PixelArtData 
 } from '../lib/image-to-pixel-art';
+import { checkFileNSFW, preloadNSFWModel } from '../lib/nsfw-check';
 import { SHARD_DIMENSION, PRESET_COLORS } from '../constants';
-import { Upload, ImageIcon, X, Wand2, AlertTriangle, Check, Loader2, Clipboard } from 'lucide-react';
+import { Upload, ImageIcon, X, Wand2, AlertTriangle, Check, Loader2, Clipboard, ShieldAlert } from 'lucide-react';
 
 interface ImageUploadDialogProps {
   open: boolean;
@@ -36,11 +37,19 @@ export function ImageUploadDialog({
 }: ImageUploadDialogProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nsfwBlocked, setNsfwBlocked] = useState(false);
   const [pixelArt, setPixelArt] = useState<PixelArtData | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [maxSize, setMaxSize] = useState(32);
   const [useDithering, setUseDithering] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Preload NSFW model when dialog opens
+  useEffect(() => {
+    if (open) {
+      preloadNSFWModel();
+    }
+  }, [open]);
 
   // Reset state when dialog closes
   const handleOpenChange = (newOpen: boolean) => {
@@ -48,6 +57,7 @@ export function ImageUploadDialog({
       setPixelArt(null);
       setSelectedFile(null);
       setError(null);
+      setNsfwBlocked(false);
     }
     onOpenChange(newOpen);
   };
@@ -66,11 +76,29 @@ export function ImageUploadDialog({
 
     setSelectedFile(file);
     setError(null);
+    setNsfwBlocked(false);
     setIsProcessing(true);
-
+    
     try {
-      const result = await convertImageToPixelArt(file, maxSize, useDithering);
-      setPixelArt(result);
+      // Run NSFW check and image processing in parallel
+      const [nsfwResult, pixelArtResult] = await Promise.all([
+        checkFileNSFW(file).catch(err => {
+          console.error('NSFW check error:', err);
+          return { isNSFW: false, reason: undefined, predictions: [] }; // Fail open
+        }),
+        convertImageToPixelArt(file, maxSize, useDithering),
+      ]);
+      
+      // Check NSFW result first
+      if (nsfwResult.isNSFW) {
+        setError(nsfwResult.reason || 'This image contains inappropriate content');
+        setNsfwBlocked(true);
+        setPixelArt(null);
+        return;
+      }
+      
+      // Image is safe, show the result
+      setPixelArt(pixelArtResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process image');
       setPixelArt(null);
@@ -281,9 +309,25 @@ export function ImageUploadDialog({
 
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              {error}
+            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+              nsfwBlocked 
+                ? 'bg-red-100 text-red-700 border border-red-300' 
+                : 'bg-red-50 text-red-600'
+            }`}>
+              {nsfwBlocked ? (
+                <ShieldAlert className="w-5 h-5 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              <div className="flex flex-col">
+                {nsfwBlocked && <span className="font-semibold">Content Blocked</span>}
+                <span>{error}</span>
+                {nsfwBlocked && (
+                  <span className="text-xs mt-1 text-red-500">
+                    Please select a different image that follows community guidelines.
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
