@@ -1345,11 +1345,33 @@ export function PixelCanvas() {
         const topLeft = globalPxToLatLon(topLeftPx, topLeftPy);
         const bottomRight = globalPxToLatLon(bottomRightPx, bottomRightPy);
         
+        // Check if any part of the stamp overlaps with a locked shard
+        let isInvalid = false;
+        
+        const minShardX = Math.floor(topLeftPx / SHARD_DIMENSION);
+        const maxShardX = Math.floor(bottomRightPx / SHARD_DIMENSION);
+        const minShardY = Math.floor(topLeftPy / SHARD_DIMENSION);
+        const maxShardY = Math.floor(bottomRightPy / SHARD_DIMENSION);
+        
+        // Iterate through all shards covered by the stamp
+        for (let sx = minShardX; sx <= maxShardX; sx++) {
+            for (let sy = minShardY; sy <= maxShardY; sy++) {
+                const shardKey = `${sx},${sy}`;
+                // Check if this shard is locked (not in unlockedShards)
+                if (!unlockedShards.has(shardKey)) {
+                    isInvalid = true;
+                    break;
+                }
+            }
+            if (isInvalid) break;
+        }
+
         return {
             bounds: [[topLeft.lat, topLeft.lon], [bottomRight.lat, bottomRight.lon]] as [[number, number], [number, number]],
             imageUrl: stampPixelArt.previewDataUrl,
+            isInvalid
         };
-    }, [isStampMode, stampPixelArt, stampPreviewPosition, isStamping]);
+    }, [isStampMode, stampPixelArt, stampPreviewPosition, isStamping, latLonToGlobalPx, globalPxToLatLon, unlockedShards]);
 
     // Keep track of unlocking shard in a ref to use in event callbacks without re-subscribing
     const unlockingShardRef = useRef(unlockingShard);
@@ -1528,7 +1550,7 @@ export function PixelCanvas() {
                         bounds={stampPreviewBounds.bounds}
                         opacity={0.7}
                         zIndex={500}
-                        className="stamp-preview-overlay"
+                        className={`stamp-preview-overlay ${stampPreviewBounds.isInvalid ? 'stamp-preview-invalid' : ''}`}
                     />
                 )}
             </MapContainer>

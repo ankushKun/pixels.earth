@@ -16,7 +16,7 @@ import {
 } from '../lib/image-to-pixel-art';
 import { checkFileNSFW, preloadNSFWModel } from '../lib/nsfw-check';
 import { SHARD_DIMENSION, PRESET_COLORS } from '../constants';
-import { Upload, ImageIcon, X, Wand2, AlertTriangle, Check, Loader2, Clipboard, ShieldAlert } from 'lucide-react';
+import { Upload, ImageIcon, AlertTriangle, Loader2, ShieldAlert } from 'lucide-react';
 
 interface ImageUploadDialogProps {
   open: boolean;
@@ -203,23 +203,22 @@ export function ImageUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Wand2 className="w-5 h-5 text-purple-500" />
-            Import Image as Pixel Art
-          </DialogTitle>
+          <DialogTitle>Import Pixel Art</DialogTitle>
           <DialogDescription>
-            Upload an image to convert it to pixel art using the available color palette.
+            Convert an image to pixel art for the map.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="grid gap-4 py-4">
           {/* File Drop Zone */}
           <div
             className={`
-              border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer
-              ${isProcessing ? 'border-gray-300 bg-gray-50' : 'border-gray-300 hover:border-purple-400 hover:bg-purple-50/50'}
+              flex flex-col items-center justify-center rounded-md border border-dashed p-8 text-center animate-in fade-in zoom-in-95 duration-200
+              ${isProcessing 
+                ? 'bg-muted opacity-50' 
+                : 'bg-muted/50 hover:bg-muted cursor-pointer'}
             `}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
@@ -238,95 +237,75 @@ export function ImageUploadDialog({
             />
             
             {isProcessing ? (
-              <div className="flex flex-col items-center gap-2 text-gray-500">
-                <Loader2 className="w-8 h-8 animate-spin" />
-                <span>Processing image...</span>
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Processing...</p>
               </div>
             ) : selectedFile ? (
               <div className="flex flex-col items-center gap-2">
-                <ImageIcon className="w-8 h-8 text-purple-500" />
-                <span className="text-sm font-medium">{selectedFile.name}</span>
-                <span className="text-xs text-gray-500">Click to change</span>
+                <div className="rounded-full bg-primary/10 p-2">
+                  <ImageIcon className="h-6 w-6 text-primary" />
+                </div>
+                <div className="text-sm font-medium">{selectedFile.name}</div>
+                <div className="text-xs text-muted-foreground">Click to replace</div>
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-2 text-gray-500">
-                <div className="flex items-center gap-3">
-                  <Upload className="w-7 h-7" />
-                  <Clipboard className="w-6 h-6" />
+              <div className="flex flex-col items-center gap-2">
+                <div className="rounded-full bg-muted p-2">
+                  <Upload className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <span>Drop, paste, or click to upload an image</span>
-                <span className="text-xs">PNG, JPG, GIF • Paste with ⌘V / Ctrl+V</span>
+                <div className="text-sm font-medium">Click to upload</div>
+                <div className="text-xs text-muted-foreground">or drag and drop</div>
               </div>
             )}
           </div>
 
           {/* Settings */}
-          <div className="flex flex-col gap-4">
-            {/* Size Slider */}
-            <div className="w-full">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-xs text-gray-600">Resolution</Label>
-                <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                  {maxSize}×{maxSize} max
-                </span>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Size</Label>
+                <span className="text-sm text-muted-foreground">{maxSize}px</span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400 w-6">{MIN_SIZE}</span>
-                <Slider
-                  min={MIN_SIZE}
-                  max={MAX_SIZE}
-                  step={4}
-                  value={[maxSize]}
-                  onValueChange={(values) => setMaxSize(values[0] ?? MIN_SIZE)}
-                  disabled={isProcessing || !selectedFile}
-                  className="flex-1"
-                />
-                <span className="text-xs text-gray-400 w-6">{MAX_SIZE}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-6">
-                <span>Fewer pixels</span>
-                <span>More detail</span>
-              </div>
+              <Slider
+                min={MIN_SIZE}
+                max={MAX_SIZE}
+                step={4}
+                value={[maxSize]}
+                onValueChange={(values) => setMaxSize(values[0] ?? MIN_SIZE)}
+                disabled={isProcessing || !selectedFile}
+              />
             </div>
 
-            {/* Dithering Toggle */}
-            <div className="flex items-center gap-2">
-              <button
+            <div className="flex items-center justify-between">
+              <Label>Dithering</Label>
+              <Button
+                variant={useDithering ? "default" : "outline"}
+                size="sm"
                 onClick={() => setUseDithering(!useDithering)}
-                className={`
-                  flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-colors
-                  ${useDithering 
-                    ? 'bg-purple-500 text-white' 
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}
-                `}
                 disabled={isProcessing}
+                className="h-7 text-xs"
               >
-                <Wand2 className="w-3 h-3" />
-                Dithering
-              </button>
+                {useDithering ? 'On' : 'Off'}
+              </Button>
             </div>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+            <div className={`flex items-start gap-2 rounded-md p-3 text-sm ${
               nsfwBlocked 
-                ? 'bg-red-100 text-red-700 border border-red-300' 
-                : 'bg-red-50 text-red-600'
+                ? 'bg-destructive/15 text-destructive' 
+                : 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-500'
             }`}>
               {nsfwBlocked ? (
-                <ShieldAlert className="w-5 h-5 shrink-0" />
+                <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
               ) : (
-                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               )}
-              <div className="flex flex-col">
-                {nsfwBlocked && <span className="font-semibold">Content Blocked</span>}
+              <div className="grid gap-1">
+                {nsfwBlocked && <span className="font-medium">Content Blocked</span>}
                 <span>{error}</span>
-                {nsfwBlocked && (
-                  <span className="text-xs mt-1 text-red-500">
-                    Please select a different image that follows community guidelines.
-                  </span>
-                )}
               </div>
             </div>
           )}
@@ -335,67 +314,48 @@ export function ImageUploadDialog({
           {pixelArt && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Preview</Label>
-                <span className="text-xs text-gray-500">
-                  {pixelArt.width}×{pixelArt.height} pixels
-                </span>
+                <Label>Preview</Label>
+                <div className="flex gap-2 text-xs text-muted-foreground">
+                  <span>{getPixelCount(pixelArt)} pixels</span>
+                  <span>•</span>
+                  <span>{estimatedTimeStr}</span>
+                </div>
               </div>
               
-              <div className="flex justify-center p-4 bg-gray-100 rounded-lg">
+              <div className="flex items-center justify-center rounded-md border bg-muted/50 p-4">
                 <img 
                   src={pixelArt.previewDataUrl} 
-                  alt="Pixel art preview"
-                  className="max-w-full max-h-[200px] image-rendering-pixelated"
+                  alt="Preview"
+                  className="max-h-[200px] object-contain image-rendering-pixelated"
                   style={{ imageRendering: 'pixelated' }}
                 />
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="bg-gray-50 p-2 rounded">
-                  <span className="text-gray-500">Pixels to place:</span>
-                  <span className="ml-1 font-medium">{pixelCount}</span>
-                </div>
-                <div className="bg-gray-50 p-2 rounded">
-                  <span className="text-gray-500">Est. time:</span>
-                  <span className="ml-1 font-medium">{estimatedTimeStr}</span>
-                </div>
-              </div>
-
-              {/* Color Palette Used */}
-              <div>
-                <Label className="text-xs text-gray-600 mb-1 block">Colors Used</Label>
-                <div className="flex flex-wrap gap-1">
+               {/* Colors */}
+               <div className="flex flex-wrap gap-1">
                   {getUsedColors(pixelArt).map((colorIndex) => (
                     <div
                       key={colorIndex}
-                      className="w-5 h-5 rounded border border-gray-300"
+                      className="h-4 w-4 rounded-[2px] border ring-offset-background"
                       style={{ backgroundColor: PRESET_COLORS[colorIndex - 1] }}
                       title={PRESET_COLORS[colorIndex - 1]}
                     />
                   ))}
                 </div>
-              </div>
             </div>
           )}
+        </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={!pixelArt || isProcessing}
-              className="bg-purple-500 hover:bg-purple-600"
-            >
-              <Check className="w-4 h-4 mr-1" />
-              Use Pixel Art
-            </Button>
-          </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirm} 
+            disabled={!pixelArt || isProcessing}
+          >
+            Import
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
