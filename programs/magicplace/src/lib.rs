@@ -41,10 +41,10 @@ const SHARD_SEED: &[u8] = b"shard";
 const AVAILABLE_COLORS: u8 = 255;
 
 /// Max pixels allowed in a burst for non-owners
-const COOLDOWN_LIMIT: u8 = 50;
+const COOLDOWN_LIMIT: u8 = 60;
 
 /// Cooldown period in seconds resetting the burst counter
-const COOLDOWN_PERIOD: u64 = 30;
+const COOLDOWN_PERIOD: u64 = 15;
 
 #[ephemeral]
 #[program]

@@ -271,6 +271,7 @@ export function PixelCanvas() {
     const [stampPixelArt, setStampPixelArt] = useState<PixelArtData | null>(null);
     const [isStampMode, setIsStampMode] = useState(false);
     const [isStamping, setIsStamping] = useState(false);
+    const [stampProgress, setStampProgress] = useState<{ placed: number; total: number; cooldownRemaining: number } | null>(null);
     const [stampPreviewPosition, setStampPreviewPosition] = useState<{ lat: number; lng: number } | null>(null);
 
     // Update presence on mouse move
@@ -1202,6 +1203,19 @@ export function PixelCanvas() {
         setIsStamping(true);
         const total = pixelsToPlace.length;
         const toastId = toast.loading(`Placing pixels: 0/${total}`);
+        
+        // Initialize progress
+        setStampProgress({ placed: 0, total, cooldownRemaining: 0 });
+
+        // Helper function to wait with countdown timer
+        const waitWithCountdown = async (seconds: number) => {
+            for (let i = seconds; i > 0; i--) {
+                setStampProgress(prev => prev ? { ...prev, cooldownRemaining: i } : null);
+                toast.loading(`Cooldown: ${i}s remaining...`, { id: toastId });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            setStampProgress(prev => prev ? { ...prev, cooldownRemaining: 0 } : null);
+        };
 
         // Check if we have an active cooldown before starting
         // If we're at the limit, we must wait for cooldown to expire first
@@ -1210,8 +1224,7 @@ export function PixelCanvas() {
             const elapsed = now - cooldownState.lastTimestamp;
             if (elapsed < COOLDOWN_PERIOD) {
                 const remaining = COOLDOWN_PERIOD - elapsed;
-                toast.loading(`Cooldown active: ${remaining}s remaining...`, { id: toastId });
-                await new Promise(resolve => setTimeout(resolve, remaining * 1000 + 500));
+                await waitWithCountdown(remaining);
             }
         }
 
@@ -1274,8 +1287,7 @@ export function PixelCanvas() {
                         const remaining = COOLDOWN_LIMIT - currentCooldownCount;
                         if (remaining <= 0) {
                             // Need to wait for cooldown to reset
-                            toast.loading(`Cooldown... ${placed}/${total} placed, waiting 30s...`, { id: toastId });
-                            await new Promise(resolve => setTimeout(resolve, COOLDOWN_PERIOD * 1000 + 500));
+                            await waitWithCountdown(COOLDOWN_PERIOD);
                             currentCooldownCount = 0;
                             continue; // Re-check with fresh counter
                         }
@@ -1284,6 +1296,7 @@ export function PixelCanvas() {
                     
                     const batch = shardPixels.slice(shardIndex, shardIndex + batchSize);
                     
+                    setStampProgress(prev => prev ? { ...prev, placed, cooldownRemaining: 0 } : null);
                     toast.loading(`Placing pixels: ${placed}/${total} (batch of ${batch.length})`, { id: toastId });
                     
                     try {
@@ -1312,6 +1325,7 @@ export function PixelCanvas() {
                         
                         placed += batch.length;
                         shardIndex += batch.length;
+                        setStampProgress(prev => prev ? { ...prev, placed } : null);
                         toast.loading(`Placing pixels: ${placed}/${total}`, { id: toastId });
                     } catch (e) {
                         console.error(`Failed to place batch on shard (${shardX}, ${shardY}):`, e);
@@ -1336,6 +1350,7 @@ export function PixelCanvas() {
             // Exit stamp mode after successful placement
             setIsStampMode(false);
             setStampPixelArt(null);
+            setStampProgress(null);
 
         } catch (e) {
             console.error("Stamp placement error:", e);
@@ -1343,6 +1358,7 @@ export function PixelCanvas() {
             playFail();
         } finally {
             setIsStamping(false);
+            setStampProgress(null);
         }
     }, [stampPixelArt, isStamping, isShardLocked, isReadonly, sessionKey, wallet.publicKey, actions, placePixelsBulkOnER, updateMarker, playPop, playFail, zoomToLockedShard, shardMetadata, cooldownState]);
 
@@ -2224,11 +2240,19 @@ export function PixelCanvas() {
             {/* Stamp Mode Indicator */}
             {isStampMode && stampPixelArt && (
                 <div className="absolute top-15 left-1/2 -translate-x-1/2 z-50">
-                    <div className={`backdrop-blur-sm text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 text-sm font-medium ${isStamping ? 'bg-emerald-500/95' : 'bg-purple-500/95'}`}>
+                    <div className={`backdrop-blur-sm text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 text-sm font-medium ${
+                        stampProgress?.cooldownRemaining ? 'bg-amber-500/95' : isStamping ? 'bg-emerald-500/95' : 'bg-purple-500/95'
+                    }`}>
                         {isStamping ? (
-                            <div className="w-10 h-10 flex items-center justify-center">
-                                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            </div>
+                            stampProgress?.cooldownRemaining ? (
+                                <div className="w-10 h-10 flex items-center justify-center bg-white/20 rounded-full">
+                                    <span className="text-lg font-bold">{stampProgress.cooldownRemaining}</span>
+                                </div>
+                            ) : (
+                                <div className="w-10 h-10 flex items-center justify-center">
+                                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                </div>
+                            )
                         ) : (
                             <img 
                                 src={stampPixelArt.previewDataUrl} 
@@ -2239,11 +2263,20 @@ export function PixelCanvas() {
                         )}
                         <div className="flex flex-col">
                             <span className="font-semibold">
-                                {isStamping ? 'Placing Pixels...' : 'Stamp Mode Active'}
+                                {stampProgress?.cooldownRemaining 
+                                    ? 'Cooldown...'
+                                    : isStamping 
+                                        ? 'Placing Pixels...' 
+                                        : 'Stamp Mode Active'
+                                }
                             </span>
-                            <span className={`text-xs ${isStamping ? 'text-emerald-200' : 'text-purple-200'}`}>
-                                {isStamping 
-                                    ? 'Watch the magic happen!'
+                            <span className={`text-xs ${
+                                stampProgress?.cooldownRemaining ? 'text-amber-200' : isStamping ? 'text-emerald-200' : 'text-purple-200'
+                            }`}>
+                                {isStamping && stampProgress
+                                    ? stampProgress.cooldownRemaining 
+                                        ? `${stampProgress.placed}/${stampProgress.total} placed • Wait ${stampProgress.cooldownRemaining}s`
+                                        : `${stampProgress.placed}/${stampProgress.total} pixels placed`
                                     : `${stampPixelArt.width}×${stampPixelArt.height} • Click to place`
                                 }
                             </span>

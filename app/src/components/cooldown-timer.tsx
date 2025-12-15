@@ -6,7 +6,7 @@ interface CooldownTimerProps {
     pixelsPlaced: number;
     maxPixels: number;
     lastPlaceTimestamp: number; // Unix timestamp in seconds
-    cooldownPeriod: number; // seconds (30)
+    cooldownPeriod: number; // seconds
 }
 
 export function CooldownTimer({ pixelsPlaced, maxPixels, lastPlaceTimestamp, cooldownPeriod }: CooldownTimerProps) {

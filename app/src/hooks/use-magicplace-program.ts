@@ -30,8 +30,8 @@ export interface SessionAccount {
 }
 
 // Cooldown Constants
-export const COOLDOWN_LIMIT = 50;
-export const COOLDOWN_PERIOD = 30; // seconds
+export const COOLDOWN_LIMIT = 60;
+export const COOLDOWN_PERIOD = 15; // seconds
 
 // Priority fee for base layer transactions (MicroLamports)
 const PRIORITY_FEE_MICRO_LAMPORTS = 200_000;

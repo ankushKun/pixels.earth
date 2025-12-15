@@ -16,6 +16,7 @@ import {
 } from '../lib/image-to-pixel-art';
 import { checkFileNSFW, preloadNSFWModel } from '../lib/nsfw-check';
 import { SHARD_DIMENSION, PRESET_COLORS } from '../constants';
+import { COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
 import { Upload, ImageIcon, AlertTriangle, Loader2, ShieldAlert } from 'lucide-react';
 
 interface ImageUploadDialogProps {
@@ -189,11 +190,11 @@ export function ImageUploadDialog({
   // Calculate stats
   const pixelCount = pixelArt ? getPixelCount(pixelArt) : 0;
   
-  // Calculate estimated time with bulk placement (50 pixels per transaction)
+  // Calculate estimated time with bulk placement (COOLDOWN_LIMIT pixels per transaction)
   // On YOUR shard: ~700ms per batch (transaction + confirmation + 100ms delay)
-  // On OTHERS' shards: 30s cooldown between batches of 50
+  // On OTHERS' shards: COOLDOWN_PERIOD seconds cooldown between batches
   // Assume best case (own shard) for the estimate
-  const numBatches = Math.ceil(pixelCount / 50);
+  const numBatches = Math.ceil(pixelCount / COOLDOWN_LIMIT);
   const estimatedSeconds = numBatches * 0.7; // ~700ms per batch
   const estimatedTimeStr = estimatedSeconds >= 60 
     ? `~${Math.ceil(estimatedSeconds / 60)} min` 

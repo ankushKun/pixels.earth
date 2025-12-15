@@ -5,7 +5,7 @@ import { getNickname, setNickname } from "@/hooks/use-gun-presence"
 import Character from "./character"
 import { Button } from "./ui/button"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { useMagicplaceProgram } from "@/hooks/use-magicplace-program"
+import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from "@/hooks/use-magicplace-program"
 import { useSessionBalance } from "./session-balance-provider"
 import { LAMPORTS_PER_SOL, SystemProgram, Transaction } from "@solana/web3.js"
 import { ScanEye } from "lucide-react"
@@ -703,10 +703,10 @@ export default function Tour() {
             return (
                 <TourDialogue
                     title="Cooldown Active! ⏳"
-                    description={<>You've placed <span className="text-blue-600 font-bold">50 pixels</span>.</>}
+                    description={<>You've placed <span className="text-blue-600 font-bold">{COOLDOWN_LIMIT} pixels</span>.</>}
                 >
                     <div className="w-fit text-center space-y-2 p-3">
-                         <p className="text-sm text-slate-600">Wait 30s or</p>
+                         <p className="text-sm text-slate-600">Wait {COOLDOWN_PERIOD}s or</p>
                          <div className="text-sm text-slate-700 space-y-1 font-medium">
                             <div className="flex items-center justify-center gap-2">💎 <span className="text-amber-600">Pay premium</span> to bypass</div>
                             <div className="flex items-center justify-center gap-2">🔓 <span className="text-emerald-600">Unlock shard</span> to bypass forever</div>
