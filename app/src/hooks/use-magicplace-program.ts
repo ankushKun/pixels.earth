@@ -879,6 +879,104 @@ export function useMagicplaceProgram() {
         }
     }, [sessionProgram, sessionKey.keypair, erConnection]);
 
+    /**
+     * Place multiple pixels in bulk on Ephemeral Rollups (when shard is delegated)
+     * Uses session key for signing - no wallet popup needed
+     * All pixels must be within the same shard
+     * 
+     * @param shardX - The shard X coordinate (0-5825)
+     * @param shardY - The shard Y coordinate (0-5825)
+     * @param pixels - Array of pixels to place (max 50), each with localX, localY, color
+     * @returns Transaction hash
+     */
+    const placePixelsBulkOnER = useCallback(async (
+        shardX: number,
+        shardY: number,
+        pixels: Array<{ localX: number; localY: number; color: number }>
+    ): Promise<string> => {
+        console.log(`[placePixelsBulkOnER] Starting: shard=(${shardX}, ${shardY}), pixels=${pixels.length}`);
+        
+        if (!sessionProgram || !sessionKey.keypair) {
+            console.error("[placePixelsBulkOnER] Session program or key not available");
+            throw new Error("Session program or key not available");
+        }
+
+        if (pixels.length === 0) {
+            throw new Error("No pixels to place");
+        }
+
+        if (pixels.length > COOLDOWN_LIMIT) {
+            throw new Error(`Too many pixels: ${pixels.length}. Maximum is ${COOLDOWN_LIMIT}`);
+        }
+
+        // Validate all pixels
+        for (const pixel of pixels) {
+            if (pixel.localX < 0 || pixel.localX >= SHARD_DIMENSION) {
+                throw new Error(`Invalid localX: ${pixel.localX}. Must be 0-${SHARD_DIMENSION - 1}`);
+            }
+            if (pixel.localY < 0 || pixel.localY >= SHARD_DIMENSION) {
+                throw new Error(`Invalid localY: ${pixel.localY}. Must be 0-${SHARD_DIMENSION - 1}`);
+            }
+            if (pixel.color < 1 || pixel.color > 255) {
+                throw new Error(`Invalid color: ${pixel.color}. Must be 1-255`);
+            }
+        }
+
+        try {
+            console.log("[placePixelsBulkOnER] Building instruction...");
+            
+            // Transform pixels to BulkPixel format expected by the program
+            const bulkPixels = pixels.map(p => ({
+                localX: p.localX,
+                localY: p.localY,
+                color: p.color,
+            }));
+
+            const bulkIx = await sessionProgram.methods
+                .placePixelsBulk(shardX, shardY, bulkPixels)
+                .accounts({
+                    signer: sessionKey.keypair.publicKey,
+                })
+                .instruction();
+            console.log("[placePixelsBulkOnER] Instruction built successfully");
+
+            const tx = new Transaction().add(bulkIx);
+            tx.feePayer = sessionKey.keypair.publicKey;
+            
+            console.log("[placePixelsBulkOnER] Getting latest blockhash...");
+            const { blockhash, lastValidBlockHeight } = await erConnection.getLatestBlockhash();
+            tx.recentBlockhash = blockhash;
+            
+            tx.sign(sessionKey.keypair);
+            console.log("[placePixelsBulkOnER] Transaction signed");
+
+            console.log("[placePixelsBulkOnER] Sending transaction...");
+            const txHash = await erConnection.sendRawTransaction(tx.serialize(), {
+                skipPreflight: true,
+            });
+            console.log(`[placePixelsBulkOnER] Transaction sent: ${txHash}`);
+
+            console.log("[placePixelsBulkOnER] Waiting for confirmation...");
+            const confirmation = await erConnection.confirmTransaction(
+                { signature: txHash, blockhash, lastValidBlockHeight },
+                "confirmed"
+            );
+            
+            if (confirmation.value.err) {
+                console.error("[placePixelsBulkOnER] Transaction FAILED on-chain:", confirmation.value.err);
+                throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+            }
+            
+            console.log(`[placePixelsBulkOnER] SUCCESS: ${txHash}`);
+            return txHash;
+        } catch (err) {
+            console.error("[placePixelsBulkOnER] ERROR:", err);
+            const message = err instanceof Error ? err.message : "Failed to place pixels in bulk on ER";
+            setError(message);
+            throw err;
+        }
+    }, [sessionProgram, sessionKey.keypair, erConnection]);
+
     // ========================================
     // Ephemeral Rollups Shard Functions
     // ========================================
@@ -1376,6 +1474,7 @@ export function useMagicplaceProgram() {
 
         // Pixel operations (Ephemeral Rollups)
         placePixelOnER,
+        placePixelsBulkOnER,
         erasePixelOnER,
 
         // Utility functions

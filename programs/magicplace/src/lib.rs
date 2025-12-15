@@ -326,6 +326,107 @@ pub mod magicplace {
         Ok(())
     }
 
+    /// Place multiple pixels in bulk (max 50 pixels per call)
+    /// All pixels must be within the same shard
+    /// Each pixel is specified as (local_x, local_y, color) where:
+    /// - local_x: 0-89 (position within shard)
+    /// - local_y: 0-89 (position within shard)
+    /// - color: 1-255 (0 is reserved for transparent)
+    pub fn place_pixels_bulk(
+        ctx: Context<PlacePixel>,
+        shard_x: u16,
+        shard_y: u16,
+        pixels: Vec<BulkPixel>,
+    ) -> Result<()> {
+        // Validate bulk size
+        require!(pixels.len() > 0, PixelError::EmptyBulkPixels);
+        require!(pixels.len() <= COOLDOWN_LIMIT as usize, PixelError::BulkTooLarge);
+        
+        let shard = &mut ctx.accounts.shard;
+        let session = &mut ctx.accounts.session;
+        let is_owner = shard.creator == session.main_address;
+        
+        // Verify shard coordinates match
+        require!(
+            shard.shard_x == shard_x && shard.shard_y == shard_y,
+            PixelError::ShardMismatch
+        );
+        
+        // Handle cooldown for non-owners
+        if !is_owner {
+            let clock = Clock::get()?;
+            let now = clock.unix_timestamp as u64;
+            let pixels_to_place = pixels.len() as u8;
+            
+            // Check if cooldown has reset
+            if session.cooldown_counter >= COOLDOWN_LIMIT {
+                if now.saturating_sub(session.last_place_timestamp) >= COOLDOWN_PERIOD {
+                    session.cooldown_counter = 0;
+                } else {
+                    return err!(PixelError::Cooldown);
+                }
+            }
+            
+            // Check if we would exceed the limit
+            let new_counter = session.cooldown_counter.saturating_add(pixels_to_place);
+            require!(new_counter <= COOLDOWN_LIMIT, PixelError::BulkExceedsCooldown);
+            
+            // Update counter
+            session.cooldown_counter = new_counter;
+            
+            // If we hit the limit, record timestamp
+            if session.cooldown_counter >= COOLDOWN_LIMIT {
+                session.last_place_timestamp = now;
+            }
+        }
+        
+        // Calculate base global coordinates for this shard
+        let base_px = (shard_x as u32) * SHARD_DIMENSION;
+        let base_py = (shard_y as u32) * SHARD_DIMENSION;
+        let timestamp = Clock::get()?.unix_timestamp as u64;
+        let painter = ctx.accounts.signer.key();
+        let main_wallet = session.main_address;
+        
+        // Place each pixel
+        for pixel in pixels.iter() {
+            // Validate local coordinates
+            require!(
+                (pixel.local_x as u32) < SHARD_DIMENSION && (pixel.local_y as u32) < SHARD_DIMENSION,
+                PixelError::InvalidPixelCoord
+            );
+            require!(pixel.color > 0 && pixel.color <= AVAILABLE_COLORS, PixelError::InvalidColor);
+            
+            // Calculate local pixel index
+            let local_pixel_id = (pixel.local_y as u32 * SHARD_DIMENSION + pixel.local_x as u32) as usize;
+            
+            // Set the pixel color
+            shard.pixels[local_pixel_id] = pixel.color;
+            
+            // Calculate global coordinates for event
+            let global_px = base_px + pixel.local_x as u32;
+            let global_py = base_py + pixel.local_y as u32;
+            
+            // Emit event for each pixel
+            emit!(PixelChanged {
+                px: global_px,
+                py: global_py,
+                color: pixel.color,
+                painter,
+                main_wallet,
+                timestamp,
+            });
+        }
+        
+        msg!(
+            "Bulk placed {} pixels on shard ({}, {})",
+            pixels.len(),
+            shard_x,
+            shard_y
+        );
+
+        Ok(())
+    }
+
     // ========================================
     // MagicBlock Ephemeral Rollups Functions
     // ========================================
@@ -531,6 +632,18 @@ pub struct SessionAccount {
     pub bump: u8,
 }
 
+/// Pixel data for bulk placement
+/// Uses local coordinates within a shard (0-89)
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct BulkPixel {
+    /// Local X coordinate within shard (0-89)
+    pub local_x: u8,
+    /// Local Y coordinate within shard (0-89)
+    pub local_y: u8,
+    /// Color index (1-255, 0 is reserved for transparent)
+    pub color: u8,
+}
+
 // ========================================
 // Errors
 // ========================================
@@ -543,12 +656,18 @@ pub enum PixelError {
     InvalidPixelCoord,
     #[msg("Shard coordinates don't match pixel location")]
     ShardMismatch,
-    #[msg("Invalid color: must be 1-15 (4-bit)")]
+    #[msg("Invalid color: must be 1-255")]
     InvalidColor,
     #[msg("Invalid authentication")]
     InvalidAuth,
     #[msg("Cooldown active: limit reached")]
     Cooldown,
+    #[msg("Bulk pixels array is empty")]
+    EmptyBulkPixels,
+    #[msg("Bulk pixels exceeds maximum limit of 50")]
+    BulkTooLarge,
+    #[msg("Bulk placement would exceed cooldown limit")]
+    BulkExceedsCooldown,
 }
 
 // ========================================

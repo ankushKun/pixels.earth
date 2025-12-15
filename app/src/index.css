@@ -351,3 +351,16 @@
 .animate-pop-in {
   animation: popInBouncy 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
+
+/* Stamp Preview Overlay */
+.stamp-preview-overlay {
+  image-rendering: pixelated !important;
+  image-rendering: crisp-edges !important;
+  pointer-events: none !important;
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.5));
+}
+
+.stamp-preview-overlay img {
+  image-rendering: pixelated !important;
+  image-rendering: crisp-edges !important;
+}

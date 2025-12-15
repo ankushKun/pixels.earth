@@ -5,7 +5,7 @@ import { hexToUint32, uint32ToHex } from '../lib/colors';
 import { latLonToGlobalPx, globalPxToLatLon } from '../lib/projection';
 import { getLocationName } from '../lib/reverse-geocode';
 import { FALLBACK_LOCATION } from '../lib/geocode-core';
-import { MapContainer, TileLayer, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, useMapEvents, ImageOverlay } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ShardGridOverlay } from './shard-grid-overlay';
 import type { Map as LeafletMap } from 'leaflet';
@@ -22,7 +22,7 @@ import {
 } from '../constants';
 import { WalletConnect } from './wallet-connect';
 import { Button } from './ui/button';
-import { Brush, Eraser, Grid2X2, Grid3X3, LayoutGrid, ScanEye, Search, Settings, Unlock, Volume2, VolumeX } from 'lucide-react';
+import { Brush, Eraser, Grid2X2, Grid3X3, ImagePlus, LayoutGrid, ScanEye, Search, Settings, Unlock, Volume2, VolumeX, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGameSounds } from '../hooks/use-game-sounds';
 import { useMagicplaceProgram, COOLDOWN_LIMIT, COOLDOWN_PERIOD } from '../hooks/use-magicplace-program';
@@ -40,6 +40,8 @@ import { Marker as LeafletMarker } from 'react-leaflet';
 import "../lib/smooth-zoom"
 import { useTourActions, TourItems } from '../hooks/use-tour';
 import { SettingsDialog } from './settings-dialog';
+import { ImageUploadDialog } from './image-upload-dialog';
+import type { PixelArtData } from '../lib/image-to-pixel-art';
 import { LocationSearch } from './location-search';
 import { usePostHog } from 'posthog-js/react';
 import MagicBlockLogo from '../assets/mgb.svg';
@@ -265,14 +267,25 @@ export function PixelCanvas() {
 
     const [selectedColor, setSelectedColor] = useState<string>(PRESET_COLORS[0]);
 
+    // Stamp mode state (declared early as used in handleMapMouseMove)
+    const [stampPixelArt, setStampPixelArt] = useState<PixelArtData | null>(null);
+    const [isStampMode, setIsStampMode] = useState(false);
+    const [isStamping, setIsStamping] = useState(false);
+    const [stampPreviewPosition, setStampPreviewPosition] = useState<{ lat: number; lng: number } | null>(null);
+
     // Update presence on mouse move
     const handleMapMouseMove = useCallback((lat: number, lng: number) => {
-        // Existing hover logic
-        handleMapHover(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
+        // Track position for stamp preview
+        if (isStampMode && stampPixelArt && !isStamping) {
+            setStampPreviewPosition({ lat, lng });
+        } else {
+            // Existing hover logic (not in stamp mode)
+            handleMapHover(lat, lng, selectedColor === TRANSPARENT_COLOR ? '#ffffff' : selectedColor);
+        }
         
         // Gun Presence - broadcast GPS coordinates directly
         updateMyPresence(lat, lng);
-    }, [handleMapHover, selectedColor, updateMyPresence]);
+    }, [handleMapHover, selectedColor, updateMyPresence, isStampMode, stampPixelArt, isStamping]);
     const [showRecentPixels, setShowRecentPixels] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
     const [isToolbarExpanded, setIsToolbarExpanded] = useState(true);
     const [currentZoom, setCurrentZoom] = useState(DEFAULT_MAP_ZOOM);
@@ -291,6 +304,7 @@ export function PixelCanvas() {
     const [cooldownState, setCooldownState] = useState<{ placed: number, lastTimestamp: number }>({ placed: 0, lastTimestamp: 0 });
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [isImageUploadOpen, setIsImageUploadOpen] = useState(false);
 
     // Track which items have already been seen (to prevent animation on subsequent re-renders)
     // Items are marked as "seen" via useEffect AFTER they render with animation
@@ -307,6 +321,7 @@ export function PixelCanvas() {
         estimateShardUnlockCost,
         getAllDelegatedShards,
         placePixelOnER,
+        placePixelsBulkOnER,
         erasePixelOnER,
         getPixelFromShard,
         fetchSessionAccount
@@ -1134,6 +1149,208 @@ export function PixelCanvas() {
         }
     }, [currentZoom, handlePlacePixelAt, handleMapClick, selectedColor, isShardLocked, zoomToLockedShard, unlockingShard, isReadonly, actions, sessionKey, wallet.publicKey]);
 
+    // Handle stamp mode click - place pixel art at clicked location
+    const handleStampClick = useCallback(async (lat: number, lng: number) => {
+        if (!stampPixelArt || isStamping) return;
+
+        const { px: startPx, py: startPy } = latLonToGlobalPx(lat, lng);
+        
+        // Center the stamp on the click position
+        const offsetPx = startPx - Math.floor(stampPixelArt.width / 2);
+        const offsetPy = startPy - Math.floor(stampPixelArt.height / 2);
+
+        // Collect all non-transparent pixels to place
+        const pixelsToPlace: Array<{ px: number; py: number; colorIndex: number }> = [];
+        for (let y = 0; y < stampPixelArt.height; y++) {
+            for (let x = 0; x < stampPixelArt.width; x++) {
+                const colorIndex = stampPixelArt.pixels[y]?.[x];
+                if (colorIndex && colorIndex !== 0) {
+                    pixelsToPlace.push({
+                        px: offsetPx + x,
+                        py: offsetPy + y,
+                        colorIndex,
+                    });
+                }
+            }
+        }
+
+        if (pixelsToPlace.length === 0) {
+            toast.error("No pixels to place in the stamp");
+            return;
+        }
+
+        // Check for locked shards
+        const lockedPixels = pixelsToPlace.filter(p => isShardLocked(p.px, p.py));
+        if (lockedPixels.length > 0) {
+            playFail();
+            toast.error(`Stamp overlaps ${lockedPixels.length} locked shard(s). Unlock them first!`);
+            // Optionally zoom to the first locked shard
+            zoomToLockedShard(lockedPixels[0]!.px, lockedPixels[0]!.py);
+            return;
+        }
+
+        // Check auth
+        if (isReadonly || !sessionKey?.keypair) {
+            if (!wallet.publicKey) {
+                actions.forceStart(TourItems.OnboardingIntro);
+            } else {
+                actions.forceStart(TourItems.NeedsSessionKey);
+            }
+            return;
+        }
+
+        setIsStamping(true);
+        const total = pixelsToPlace.length;
+        const toastId = toast.loading(`Placing pixels: 0/${total}`);
+
+        let placed = 0;
+        let failed = 0;
+        const startTime = Date.now();
+        const userPubkey = wallet.publicKey?.toBase58();
+
+        // Helper to check if user owns the shard
+        const userOwnsShard = (shardX: number, shardY: number): boolean => {
+            if (!userPubkey) return false;
+            const shardKey = `${shardX},${shardY}`;
+            const metadata = shardMetadata.get(shardKey);
+            return metadata?.creator === userPubkey;
+        };
+
+        // Group pixels by shard for bulk placement
+        const pixelsByShard = new Map<string, Array<{ localX: number; localY: number; color: number; globalPx: number; globalPy: number }>>();
+        
+        for (const pixel of pixelsToPlace) {
+            const shardX = Math.floor(pixel.px / SHARD_DIMENSION);
+            const shardY = Math.floor(pixel.py / SHARD_DIMENSION);
+            const localX = pixel.px % SHARD_DIMENSION;
+            const localY = pixel.py % SHARD_DIMENSION;
+            const shardKey = `${shardX},${shardY}`;
+            
+            if (!pixelsByShard.has(shardKey)) {
+                pixelsByShard.set(shardKey, []);
+            }
+            pixelsByShard.get(shardKey)!.push({
+                localX,
+                localY,
+                color: pixel.colorIndex,
+                globalPx: pixel.px,
+                globalPy: pixel.py,
+            });
+        }
+
+        try {
+            // Process each shard's pixels
+            for (const [shardKey, shardPixels] of pixelsByShard) {
+                const [shardXStr, shardYStr] = shardKey.split(',');
+                const shardX = parseInt(shardXStr!);
+                const shardY = parseInt(shardYStr!);
+                const isOwner = userOwnsShard(shardX, shardY);
+                
+                // Split into chunks of max 50 pixels (COOLDOWN_LIMIT)
+                const BULK_SIZE = COOLDOWN_LIMIT;
+                for (let i = 0; i < shardPixels.length; i += BULK_SIZE) {
+                    const batch = shardPixels.slice(i, i + BULK_SIZE);
+                    
+                    // Check cooldown for non-owner shards
+                    // Note: The contract handles cooldown internally, but for large stamps
+                    // we might need to wait between batches on non-owned shards
+                    if (!isOwner && i > 0) {
+                        // Wait a bit between batches on others' shards to avoid cooldown rejection
+                        toast.loading(`Cooldown... ${placed}/${total} placed`, { id: toastId });
+                        await new Promise(resolve => setTimeout(resolve, COOLDOWN_PERIOD * 1000 + 500));
+                    }
+                    
+                    toast.loading(`Placing pixels: ${placed}/${total} (batch of ${batch.length})`, { id: toastId });
+                    
+                    try {
+                        // Convert to bulk format
+                        const bulkPixels = batch.map(p => ({
+                            localX: p.localX,
+                            localY: p.localY,
+                            color: p.color,
+                        }));
+                        
+                        // Send bulk transaction
+                        await placePixelsBulkOnER(shardX, shardY, bulkPixels);
+                        
+                        // Update UI - all pixels in batch appear at once
+                        for (const pixel of batch) {
+                            const colorHex = PRESET_COLORS[pixel.color - 1];
+                            if (colorHex) {
+                                updateMarker(pixel.globalPx, pixel.globalPy, hexToUint32(colorHex));
+                            }
+                        }
+                        
+                        placed += batch.length;
+                        toast.loading(`Placing pixels: ${placed}/${total}`, { id: toastId });
+                    } catch (e) {
+                        console.error(`Failed to place batch on shard (${shardX}, ${shardY}):`, e);
+                        failed += batch.length;
+                        toast.loading(`Placing pixels: ${placed}/${total} (${failed} failed)`, { id: toastId });
+                    }
+                    
+                    // Small delay for visual effect between batches
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            if (failed === 0) {
+                toast.success(`✨ Placed ${placed} pixels in ${elapsed}s!`, { id: toastId });
+                playPop();
+            } else {
+                toast.warning(`Placed ${placed}/${total} pixels (${failed} failed) in ${elapsed}s`, { id: toastId });
+            }
+
+            // Exit stamp mode after successful placement
+            setIsStampMode(false);
+            setStampPixelArt(null);
+
+        } catch (e) {
+            console.error("Stamp placement error:", e);
+            toast.error(`Failed to place stamp: ${e instanceof Error ? e.message : String(e)}`, { id: toastId });
+            playFail();
+        } finally {
+            setIsStamping(false);
+        }
+    }, [stampPixelArt, isStamping, isShardLocked, isReadonly, sessionKey, wallet.publicKey, actions, placePixelsBulkOnER, updateMarker, playPop, playFail, zoomToLockedShard, shardMetadata]);
+
+    // Combined click handler that handles both normal and stamp modes
+    const handleMapClickCombined = useCallback((lat: number, lng: number) => {
+        if (isStampMode && stampPixelArt) {
+            handleStampClick(lat, lng);
+        } else {
+            handleInstantMapClick(lat, lng);
+        }
+    }, [isStampMode, stampPixelArt, handleStampClick, handleInstantMapClick]);
+
+    // Compute stamp preview bounds for rendering on map
+    const stampPreviewBounds = useMemo(() => {
+        if (!isStampMode || !stampPixelArt || !stampPreviewPosition || isStamping) {
+            return null;
+        }
+
+        const { px: centerPx, py: centerPy } = latLonToGlobalPx(stampPreviewPosition.lat, stampPreviewPosition.lng);
+        
+        // Calculate the corners of the stamp
+        const halfWidth = Math.floor(stampPixelArt.width / 2);
+        const halfHeight = Math.floor(stampPixelArt.height / 2);
+        
+        const topLeftPx = centerPx - halfWidth;
+        const topLeftPy = centerPy - halfHeight;
+        const bottomRightPx = topLeftPx + stampPixelArt.width;
+        const bottomRightPy = topLeftPy + stampPixelArt.height;
+        
+        // Convert to lat/lng
+        const topLeft = globalPxToLatLon(topLeftPx, topLeftPy);
+        const bottomRight = globalPxToLatLon(bottomRightPx, bottomRightPy);
+        
+        return {
+            bounds: [[topLeft.lat, topLeft.lon], [bottomRight.lat, bottomRight.lon]] as [[number, number], [number, number]],
+            imageUrl: stampPixelArt.previewDataUrl,
+        };
+    }, [isStampMode, stampPixelArt, stampPreviewPosition, isStamping]);
+
     // Keep track of unlocking shard in a ref to use in event callbacks without re-subscribing
     const unlockingShardRef = useRef(unlockingShard);
     useEffect(() => { unlockingShardRef.current = unlockingShard; }, [unlockingShard]);
@@ -1252,7 +1469,7 @@ export function PixelCanvas() {
                     noWrap={true}
                 />
                 <MapEventsHandler
-                    onMapClick={handleInstantMapClick}
+                    onMapClick={handleMapClickCombined}
                     onMapReady={(map) => {
                         initializeMap(map);
                         setCurrentZoom(map.getZoom());
@@ -1303,6 +1520,17 @@ export function PixelCanvas() {
                         interactive={false}
                     />
                 ))}
+
+                {/* Stamp Preview Overlay */}
+                {stampPreviewBounds && (
+                    <ImageOverlay
+                        url={stampPreviewBounds.imageUrl}
+                        bounds={stampPreviewBounds.bounds}
+                        opacity={0.7}
+                        zIndex={500}
+                        className="stamp-preview-overlay"
+                    />
+                )}
             </MapContainer>
 
             {/* Shard Grid Zoom Hint */}
@@ -1666,6 +1894,15 @@ export function PixelCanvas() {
                                     )}
                                 </div>
                                 <div className='grow' />
+                                <Button 
+                                    variant={"ghost"} 
+                                    size={"icon"} 
+                                    className={cn("", isStampMode && "bg-purple-100 text-purple-600")} 
+                                    onClick={() => setIsImageUploadOpen(true)}
+                                    title="Import image as pixel art"
+                                >
+                                    <ImagePlus className="w-5 h-5" />
+                                </Button>
                                 <Button variant={"ghost"} size={"icon"} className={cn("", selectedColor === TRANSPARENT_COLOR && "bg-slate-100")} onClick={() => setSelectedColor(TRANSPARENT_COLOR)}>
                                     <Eraser />
                                 </Button>
@@ -1826,6 +2063,59 @@ export function PixelCanvas() {
                     }
                 }}
             />
+            <ImageUploadDialog
+                open={isImageUploadOpen}
+                onOpenChange={setIsImageUploadOpen}
+                onConfirm={(pixelArt) => {
+                    setStampPixelArt(pixelArt);
+                    setIsStampMode(true);
+                    toast.success(`Pixel art loaded! Click anywhere on the map to stamp it.`, { duration: 4000 });
+                }}
+                unlockedShards={unlockedShards}
+            />
+
+            {/* Stamp Mode Indicator */}
+            {isStampMode && stampPixelArt && (
+                <div className="absolute top-15 left-1/2 -translate-x-1/2 z-50">
+                    <div className={`backdrop-blur-sm text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 text-sm font-medium ${isStamping ? 'bg-emerald-500/95' : 'bg-purple-500/95'}`}>
+                        {isStamping ? (
+                            <div className="w-10 h-10 flex items-center justify-center">
+                                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        ) : (
+                            <img 
+                                src={stampPixelArt.previewDataUrl} 
+                                alt="Stamp preview" 
+                                className="w-10 h-10 rounded border border-white/30"
+                                style={{ imageRendering: 'pixelated' }}
+                            />
+                        )}
+                        <div className="flex flex-col">
+                            <span className="font-semibold">
+                                {isStamping ? 'Placing Pixels...' : 'Stamp Mode Active'}
+                            </span>
+                            <span className={`text-xs ${isStamping ? 'text-emerald-200' : 'text-purple-200'}`}>
+                                {isStamping 
+                                    ? 'Watch the magic happen!'
+                                    : `${stampPixelArt.width}×${stampPixelArt.height} • Click to place`
+                                }
+                            </span>
+                        </div>
+                        {!isStamping && (
+                            <button
+                                onClick={() => {
+                                    setIsStampMode(false);
+                                    setStampPixelArt(null);
+                                }}
+                                className="ml-2 p-1 hover:bg-white/20 rounded transition-colors"
+                                title="Cancel stamp mode"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

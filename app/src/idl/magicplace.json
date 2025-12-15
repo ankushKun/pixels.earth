@@ -863,6 +863,104 @@
       ]
     },
     {
+      "name": "place_pixels_bulk",
+      "docs": [
+        "Place multiple pixels in bulk (max 50 pixels per call)",
+        "All pixels must be within the same shard",
+        "Each pixel is specified as (local_x, local_y, color) where:",
+        "- local_x: 0-89 (position within shard)",
+        "- local_y: 0-89 (position within shard)",
+        "- color: 1-255 (0 is reserved for transparent)"
+      ],
+      "discriminator": [
+        52,
+        220,
+        66,
+        126,
+        140,
+        36,
+        121,
+        150
+      ],
+      "accounts": [
+        {
+          "name": "shard",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "shard_x"
+              },
+              {
+                "kind": "arg",
+                "path": "shard_y"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "signer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "shard_x",
+          "type": "u16"
+        },
+        {
+          "name": "shard_y",
+          "type": "u16"
+        },
+        {
+          "name": "pixels",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "BulkPixel"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "process_undelegation",
       "discriminator": [
         196,
@@ -975,7 +1073,7 @@
     {
       "code": 6003,
       "name": "InvalidColor",
-      "msg": "Invalid color: must be 1-15 (4-bit)"
+      "msg": "Invalid color: must be 1-255"
     },
     {
       "code": 6004,
@@ -986,9 +1084,57 @@
       "code": 6005,
       "name": "Cooldown",
       "msg": "Cooldown active: limit reached"
+    },
+    {
+      "code": 6006,
+      "name": "EmptyBulkPixels",
+      "msg": "Bulk pixels array is empty"
+    },
+    {
+      "code": 6007,
+      "name": "BulkTooLarge",
+      "msg": "Bulk pixels exceeds maximum limit of 50"
+    },
+    {
+      "code": 6008,
+      "name": "BulkExceedsCooldown",
+      "msg": "Bulk placement would exceed cooldown limit"
     }
   ],
   "types": [
+    {
+      "name": "BulkPixel",
+      "docs": [
+        "Pixel data for bulk placement",
+        "Uses local coordinates within a shard (0-89)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "local_x",
+            "docs": [
+              "Local X coordinate within shard (0-89)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "local_y",
+            "docs": [
+              "Local Y coordinate within shard (0-89)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "color",
+            "docs": [
+              "Color index (1-255, 0 is reserved for transparent)"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "PixelChanged",
       "type": {
